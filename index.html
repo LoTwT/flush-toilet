@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#e8e5dc" />
+    <meta name="description" content="按下冲水，静静看水流过。一个可以反复体验的俯视马桶。" />
+    <title>FLUSH — 水流过，归于平静</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas
+        id="scene"
+        aria-label="白色陶瓷马桶的俯视三维场景，水箱顶部的圆形按钮可以冲水"
+      ></canvas>
+      <header class="header">
+        <a class="wordmark" href="./" aria-label="FLUSH 首页">FLUSH<span>.</span></a>
+        <div class="header-actions">
+          <button class="lid-button" id="lid-toggle" type="button" aria-pressed="false" disabled>
+            盖上马桶盖
+          </button>
+          <button
+            class="sound-button is-muted"
+            id="sound-toggle"
+            type="button"
+            aria-pressed="false"
+            aria-label="开启声音"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
+              <path d="M11 5 6 9H3v6h3l5 4V5Z" stroke-linejoin="round" />
+              <path
+                class="sound-waves"
+                d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"
+                stroke-linecap="round"
+              />
+              <path class="sound-off" d="m16 9 6 6m0-6-6 6" stroke-linecap="round" />
+            </svg>
+            <span id="sound-label">声音已关闭</span>
+          </button>
+        </div>
+      </header>
+      <div class="intro">
+        <p class="eyebrow">A MOMENT OF QUIET</p>
+        <h1>水流过，<br />归于平静。</h1>
+        <p class="intro-note">轻轻一按，留给自己片刻空白。</p>
+      </div>
+      <div class="loading" id="loading" role="status">正在准备画面<span></span></div>
+      <section class="settings" aria-label="水流设置">
+        <fieldset id="strength-options" disabled>
+          <legend>冲水力度 <span>座圈下沿出水</span></legend>
+          <div class="strength-options">
+            <label><input type="radio" name="strength" value="gentle" /><span>柔和</span></label>
+            <label
+              ><input type="radio" name="strength" value="standard" checked /><span
+                >标准</span
+              ></label
+            >
+            <label><input type="radio" name="strength" value="strong" /><span>强劲</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="cleaner-options">
+          <legend>水箱洁厕块 <span>在水箱中溶解</span></legend>
+          <div class="color-options">
+            <label
+              ><input type="radio" name="cleaner" value="clear" /><span
+                ><i class="swatch clear"></i>无添加</span
+              ></label
+            >
+            <label
+              ><input type="radio" name="cleaner" value="blue" checked /><span
+                ><i class="swatch blue"></i>蓝色</span
+              ></label
+            >
+            <label
+              ><input type="radio" name="cleaner" value="mint" /><span
+                ><i class="swatch mint"></i>薄荷</span
+              ></label
+            >
+            <label
+              ><input type="radio" name="cleaner" value="lavender" /><span
+                ><i class="swatch lavender"></i>淡紫</span
+              ></label
+            >
+          </div>
+        </fieldset>
+      </section>
+      <main class="controls" aria-label="冲水控制">
+        <div class="cycle-status">
+          <span class="status-dot" id="status-dot"></span>
+          <p id="phase-label" role="status" aria-live="polite">准备就绪</p>
+        </div>
+        <button class="flush-button" id="flush-button" type="button" disabled>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 3C9.5 6.5 5.5 10.7 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.7 14.5 6.5 12 3Z"
+              stroke-linejoin="round"
+            />
+            <path d="M9 15a3 3 0 0 0 3 3" stroke-linecap="round" />
+          </svg>
+          <span id="flush-label">冲水</span>
+          <kbd>空格</kbd>
+        </button>
+        <div class="tank-status">
+          <span id="tank-label">水箱已蓄满</span>
+          <div
+            class="tank-meter"
+            id="tank-meter"
+            role="progressbar"
+            aria-label="水箱储水量"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="100"
+          >
+            <span id="tank-fill"></span>
+          </div>
+        </div>
+      </main>
+      <footer class="footer">
+        <span>一个小小的水循环</span><span>点击水箱按钮也可以冲水</span>
+      </footer>
+      <noscript><p class="error-message">请启用 JavaScript 以体验冲水动画。</p></noscript>
+    </div>
+    <dialog
+      class="sound-dialog"
+      id="sound-dialog"
+      aria-labelledby="sound-dialog-title"
+      aria-describedby="sound-dialog-description"
+    >
+      <div class="sound-dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M11 5 6 9H3v6h3l5 4V5Z" stroke-linejoin="round" />
+          <path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" stroke-linecap="round" />
+        </svg>
+      </div>
+      <h2 id="sound-dialog-title">要开启水声吗？</h2>
+      <p id="sound-dialog-description">
+        声音默认关闭。开启后，可以听见冲水与补水的声音，也可随时在右上角切换。
+      </p>
+      <label class="sound-remember">
+        <input id="sound-remember" type="checkbox" />
+        <span>下次不再提示</span>
+      </label>
+      <div class="sound-dialog-actions">
+        <button id="sound-keep-muted" class="sound-dialog-secondary" type="button" autofocus>
+          保持静音
+        </button>
+        <button id="sound-enable" class="sound-dialog-primary" type="button">开启声音</button>
+      </div>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
