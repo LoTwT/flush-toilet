@@ -1,6 +1,7 @@
 import type { BowlSection, CleanerColor, FlushPhase, FlushStrength } from './types'
 
 export const CYCLE_DURATION = 12
+export const FLUSH_END_TIME = 5
 export const REST_WATER_HEIGHT = 0.32
 export const LOW_WATER_HEIGHT = 0.095
 

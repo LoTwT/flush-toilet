@@ -9,6 +9,7 @@ import type { CleanerColor, FlushState, FlushStrength, SceneController } from '.
 const canvas = document.querySelector<HTMLCanvasElement>('#scene')!
 const flushButton = document.querySelector<HTMLButtonElement>('#flush-button')!
 const flushLabel = document.querySelector<HTMLElement>('#flush-label')!
+const boostButton = document.querySelector<HTMLButtonElement>('#boost-toggle')!
 const phaseLabel = document.querySelector<HTMLElement>('#phase-label')!
 const soundButton = document.querySelector<HTMLButtonElement>('#sound-toggle')!
 const soundLabel = document.querySelector<HTMLElement>('#sound-label')!
@@ -33,7 +34,7 @@ let lastTime = 0
 const rememberedSound = readRememberedSound()
 let soundEnabled = rememberedSound ?? false
 let rememberSoundSelection = rememberedSound !== null
-let lastPhase = ''
+let lastInterfaceState = ''
 let lastTankPercent = -1
 let failed = false
 let strength: FlushStrength = 'standard'
@@ -41,17 +42,22 @@ let cleaner: CleanerColor = 'blue'
 let lidClosed = false
 
 function updateInterface(state: FlushState): void {
-  if (state.phase !== lastPhase) {
-    lastPhase = state.phase
+  const canStart = cycle.canStart
+  const interfaceState = `${state.phase}:${cycle.boostEnabled}:${canStart}`
+  if (interfaceState !== lastInterfaceState) {
+    lastInterfaceState = interfaceState
     const ready = state.phase === 'ready'
-    flushButton.disabled = !ready
-    strengthOptions.disabled = !ready
-    flushLabel.textContent = ready
-      ? '冲水'
+    flushButton.disabled = !canStart
+    strengthOptions.disabled = !canStart
+    boostButton.setAttribute('aria-pressed', String(cycle.boostEnabled))
+    flushLabel.textContent = canStart
+      ? ready
+        ? '冲水'
+        : '再次冲水'
       : state.phase === 'refilling' || state.phase === 'settling'
         ? '正在补水'
         : '正在冲水'
-    phaseLabel.textContent = PHASE_LABELS[state.phase]
+    phaseLabel.textContent = canStart && !ready ? '补水中，可再次冲水' : PHASE_LABELS[state.phase]
     document.body.dataset.phase = state.phase
     tankLabel.textContent = ready ? '水箱已蓄满' : '水箱自动蓄水中'
   }
@@ -70,6 +76,7 @@ function showError(): void {
   flushButton.disabled = true
   strengthOptions.disabled = true
   lidButton.disabled = true
+  boostButton.disabled = true
   flushLabel.textContent = '暂时无法冲水'
   loading.classList.remove('is-hidden')
   loading.classList.add('has-error')
@@ -80,8 +87,10 @@ function showError(): void {
 function render(timestamp: number): void {
   if (!scene || failed || document.hidden) return
   // 时间轴保留完整经过时间，与录音时钟同步；步长限制由流体积分层负责。
-  const delta = lastTime === 0 ? 0 : (timestamp - lastTime) / 1000
-  lastTime = timestamp
+  // 同一帧的 RAF 时间戳可能早于点击时刻，计时基准不能倒退。
+  const currentTime = Math.max(timestamp, lastTime)
+  const delta = lastTime === 0 ? 0 : (currentTime - lastTime) / 1000
+  lastTime = currentTime
   const state = cycle.advance(delta)
   scene.update(state, delta)
   audio.update(state)
@@ -91,6 +100,8 @@ function render(timestamp: number): void {
 
 function requestFlush(): void {
   if (!scene || failed || soundDialog.open || !cycle.start(strength)) return
+  // 新循环从接受请求时计时，点击前积累的长帧不属于本次冲水。
+  lastTime = performance.now()
   updateInterface(cycle.state)
   void audio.unlock().catch(() => {
     soundEnabled = false
@@ -136,6 +147,15 @@ soundDialog.addEventListener(
 )
 
 flushButton.addEventListener('click', requestFlush, { signal })
+boostButton.addEventListener(
+  'click',
+  () => {
+    if (!scene || failed) return
+    cycle.boostEnabled = !cycle.boostEnabled
+    updateInterface(cycle.state)
+  },
+  { signal },
+)
 lidButton.addEventListener(
   'click',
   () => {
@@ -175,9 +195,7 @@ canvas.addEventListener(
   'pointermove',
   (event) => {
     canvas.style.cursor =
-      scene?.hitsFlushButton(event.clientX, event.clientY) && cycle.state.phase === 'ready'
-        ? 'pointer'
-        : 'default'
+      scene?.hitsFlushButton(event.clientX, event.clientY) && cycle.canStart ? 'pointer' : 'default'
   },
   { signal },
 )
@@ -235,9 +253,15 @@ if (rememberedSound === null) {
 
 void createScene(canvas)
   .then((controller) => {
+    // 初始化完成前可能已经失去上下文，或因热更新销毁了旧页面。
+    if (failed || signal.aborted) {
+      controller.dispose()
+      return
+    }
     scene = controller
     scene.setCleaner(cleaner)
     lidButton.disabled = false
+    boostButton.disabled = false
     scene.update(cycle.state, 0)
     updateInterface(cycle.state)
     loading.classList.add('is-hidden')
@@ -245,6 +269,7 @@ void createScene(canvas)
     frame = requestAnimationFrame(render)
   })
   .catch((error: unknown) => {
+    if (signal.aborted) return
     console.error('Unable to initialize the toilet scene:', error)
     showError()
   })
