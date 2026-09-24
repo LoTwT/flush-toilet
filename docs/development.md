@@ -22,6 +22,8 @@ CI 通过 `pnpm install --frozen-lockfile` 安装，再执行 `pnpm check`。格
 
 在 Cloudflare 网页连接仓库后，生产分支选择 `main`，根目录保持仓库根目录，构建命令填写 `pnpm build`，部署命令填写 `npx wrangler deploy`。Node.js 使用 `.node-version` 指定的版本，构建环境变量 `PNPM_VERSION` 与 `package.json` 的 `packageManager` 保持一致。
 
+非生产分支使用 `npx wrangler preview` 创建预览。配置中的空 `previews` 块是该命令的必要条件；静态资源目录和兼容日期仍由顶层配置提供。配置规则见 [Cloudflare Previews](https://developers.cloudflare.com/workers/previews/configuration/#wrangler-configuration-file)。
+
 已有配置会让 Wrangler 跳过框架自动配置，避免在部署时向项目安装 Vite 适配器及其依赖。项目无需安装 Wrangler 开发依赖，发布工具由 `npx` 按需获取。先运行 `pnpm build`，再运行 `npx wrangler deploy --dry-run` 可在不发布到云端的情况下校验部署配置。
 
 自定义域名确定后，可在 `wrangler.jsonc` 的 `routes` 中添加 `custom_domain: true` 的域名条目；域名所在 Zone 需已在 Cloudflare 激活。配置方式见 [Cloudflare Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。
