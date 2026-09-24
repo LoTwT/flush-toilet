@@ -45,7 +45,10 @@ function createFloorTexture(): THREE.CanvasTexture {
   return texture
 }
 
-export async function createScene(canvas: HTMLCanvasElement): Promise<SceneController> {
+export async function createScene(
+  canvas: HTMLCanvasElement,
+  frame: HTMLElement,
+): Promise<SceneController> {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
@@ -193,19 +196,17 @@ export async function createScene(canvas: HTMLCanvasElement): Promise<SceneContr
     renderer.setPixelRatio(pixelRatio)
     renderer.setSize(width, height, false)
     const aspect = width / height
-    const narrow = width <= 800
-    // 窄屏给底部设置留出空间，模型始终落在标题与控件之间。
-    const sceneTop = 128
-    const sceneBottom = height - 334
+    const bounds = canvas.getBoundingClientRect()
+    const frameBounds = frame.getBoundingClientRect()
+    // 相机使用布局给出的区域，与下方控件共用中线，不再按世界单位单独偏移。
+    const centerX = (frameBounds.left + frameBounds.width / 2 - bounds.left) / width
+    const centerY = (frameBounds.top + frameBounds.height / 2 - bounds.top) / height
     const viewHeight = Math.max(
-      5.6,
-      2.7 / aspect,
-      narrow ? (height * 3.65) / (sceneBottom - sceneTop) : 0,
+      (height * 3.65) / frameBounds.height,
+      (height * 2.2) / frameBounds.width,
     )
-    const shiftX = width > 1000 ? -0.37 : 0
-    const centerZ = narrow
-      ? -0.35 - ((sceneTop + sceneBottom) / (2 * height) - 0.5) * viewHeight
-      : -0.23
+    const shiftX = (0.5 - centerX) * viewHeight * aspect
+    const centerZ = -0.35 - (centerY - 0.5) * viewHeight
     camera.left = (-viewHeight * aspect) / 2 + shiftX
     camera.right = (viewHeight * aspect) / 2 + shiftX
     camera.top = viewHeight / 2 - centerZ

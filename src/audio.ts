@@ -2,16 +2,17 @@ import { CYCLE_DURATION, FLUSH_STRENGTHS } from './constants'
 import { smoothRange } from './simulation/flush-cycle'
 import type { FlushAudio, FlushState } from './types'
 
-const REFILL_START = 2.2
+const REFILL_START = 1.1
 
 export function getAudioLevels(state: FlushState): { flush: number; refill: number } {
   if (state.phase === 'ready') return { flush: 0, refill: 0 }
   return {
     flush: FLUSH_STRENGTHS[state.strength].sound * (1 - smoothRange(4.3, 5, state.elapsed)),
+    // 水箱盖固定合上，补水声应轻于便池内的冲刷声。
     refill:
-      0.48 *
-      smoothRange(REFILL_START, 4.8, state.elapsed) *
-      (1 - smoothRange(9.6, 11.2, state.elapsed)),
+      0.28 *
+      smoothRange(REFILL_START, 1.8, state.elapsed) *
+      (1 - smoothRange(11, 11.2, state.elapsed)),
   }
 }
 
@@ -21,7 +22,7 @@ export function createFlushAudio(): FlushAudio {
   let refillBuffer: AudioBuffer | undefined
   let flushGain: GainNode | undefined
   let refillGain: GainNode | undefined
-  let filter: BiquadFilterNode | undefined
+  let flushFilter: BiquadFilterNode | undefined
   let loading: Promise<void> | undefined
   let voices: AudioBufferSourceNode[] = []
   let playing = false
@@ -39,13 +40,14 @@ export function createFlushAudio(): FlushAudio {
       refillGain = context.createGain()
       flushGain.gain.value = 0
       refillGain.gain.value = 0
-      filter = context.createBiquadFilter()
-      filter.type = 'lowpass'
-      filter.frequency.value = 6800
-      filter.Q.value = 0.3
-      flushGain.connect(filter)
-      refillGain.connect(filter)
-      filter.connect(context.destination)
+      flushFilter = context.createBiquadFilter()
+      flushFilter.type = 'lowpass'
+      flushFilter.frequency.value = 6800
+      flushFilter.Q.value = 0.3
+      flushGain.connect(flushFilter)
+      flushFilter.connect(context.destination)
+      // 素材已按合盖水箱削弱高频，补水音色不随冲水力度改变。
+      refillGain.connect(context.destination)
     }
     // resume 必须在用户手势内调用，音频加载后按当前动画时间接入。
     const resumed = context.resume()
@@ -106,7 +108,7 @@ export function createFlushAudio(): FlushAudio {
       !refillBuffer ||
       !flushGain ||
       !refillGain ||
-      !filter ||
+      !flushFilter ||
       disposed
     )
       return
@@ -126,7 +128,7 @@ export function createFlushAudio(): FlushAudio {
     const now = context.currentTime
     flushGain.gain.setTargetAtTime(levels.flush, now, 0.04)
     refillGain.gain.setTargetAtTime(levels.refill, now, 0.1)
-    filter.frequency.setTargetAtTime(
+    flushFilter.frequency.setTargetAtTime(
       4400 + FLUSH_STRENGTHS[state.strength].pressure * 1800,
       now,
       0.1,

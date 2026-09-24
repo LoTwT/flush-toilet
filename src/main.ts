@@ -7,6 +7,7 @@ import { readRememberedSound, rememberSound } from './sound-preference'
 import type { CleanerColor, FlushState, FlushStrength, SceneController } from './types'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#scene')!
+const sceneFrame = document.querySelector<HTMLElement>('.scene-frame')!
 const flushButton = document.querySelector<HTMLButtonElement>('#flush-button')!
 const flushLabel = document.querySelector<HTMLElement>('#flush-label')!
 const boostButton = document.querySelector<HTMLButtonElement>('#boost-toggle')!
@@ -251,7 +252,7 @@ if (rememberedSound === null) {
   soundDialog.showModal()
 }
 
-void createScene(canvas)
+void createScene(canvas, sceneFrame)
   .then((controller) => {
     // 初始化完成前可能已经失去上下文，或因热更新销毁了旧页面。
     if (failed || signal.aborted) {
