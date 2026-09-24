@@ -93,8 +93,24 @@
       </section>
       <main class="controls" aria-label="冲水控制">
         <div class="cycle-status">
-          <span class="status-dot" id="status-dot"></span>
-          <p id="phase-label" role="status" aria-live="polite">准备就绪</p>
+          <div class="phase-status">
+            <span class="status-dot" id="status-dot"></span>
+            <p id="phase-label" role="status" aria-live="polite">准备就绪</p>
+          </div>
+          <button
+            class="boost-button"
+            id="boost-toggle"
+            type="button"
+            aria-pressed="false"
+            aria-label="Boost：冲完即可再冲"
+            title="开启后，冲水结束即可再次冲水，无需等待补水"
+            disabled
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="m9 1-6 8h4l-1 6 7-9H9l1-5Z" stroke-linejoin="round" />
+            </svg>
+            Boost
+          </button>
         </div>
         <button class="flush-button" id="flush-button" type="button" disabled>
           <svg

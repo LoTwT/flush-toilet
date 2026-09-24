@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CYCLE_DURATION, LOW_WATER_HEIGHT, REST_WATER_HEIGHT } from '../constants'
+import { CYCLE_DURATION, FLUSH_END_TIME, LOW_WATER_HEIGHT, REST_WATER_HEIGHT } from '../constants'
 import { FlushCycle, sampleFlush } from './flush-cycle'
 
 describe('一次完整冲水', () => {
@@ -99,4 +99,59 @@ describe('一次完整冲水', () => {
     expect(cycle.state.elapsed).toBe(CYCLE_DURATION)
     expect(cycle.state.phase).toBe('ready')
   })
+})
+
+describe('Boost 连续冲水', () => {
+  it('默认关闭；在补水时切换 Boost 只改变能否再冲，不改变当前水位和进度', () => {
+    const cycle = new FlushCycle()
+    expect(cycle.boostEnabled).toBe(false)
+    cycle.start()
+    cycle.advance(FLUSH_END_TIME)
+    const before = cycle.state
+    expect(cycle.canStart).toBe(false)
+    cycle.boostEnabled = true
+    expect(cycle.canStart).toBe(true)
+    expect(cycle.state).toEqual(before)
+    cycle.boostEnabled = false
+    expect(cycle.canStart).toBe(false)
+    expect(cycle.start()).toBe(false)
+    cycle.advance(CYCLE_DURATION - FLUSH_END_TIME)
+    expect(cycle.canStart).toBe(true)
+  })
+
+  it.each(['gentle', 'standard', 'strong'] as const)(
+    '%s 档冲完即能再冲，衔接当前水位，连续启动后仍能恢复蓄满',
+    (strength) => {
+      const cycle = new FlushCycle()
+      cycle.boostEnabled = true
+      expect(cycle.start(strength)).toBe(true)
+      for (let repeat = 0; repeat < 10; repeat++) {
+        cycle.advance(FLUSH_END_TIME - 0.001)
+        expect(cycle.canStart).toBe(false)
+        expect(cycle.start()).toBe(false)
+        cycle.advance(0.001)
+        const before = cycle.state
+        expect(before.phase).toBe('refilling')
+        expect(before.tankLevel).toBeLessThan(1)
+        expect(cycle.canStart).toBe(true)
+        expect(cycle.start(strength)).toBe(true)
+        expect(cycle.state.phase).toBe('flushing')
+        expect(cycle.state.elapsed).toBe(0)
+        expect(cycle.state.tankLevel).toBeCloseTo(before.tankLevel, 10)
+        expect(cycle.state.bowlHeight).toBeCloseTo(before.bowlHeight, 10)
+      }
+      for (let frame = 0; frame < CYCLE_DURATION * 60; frame++) {
+        const state = cycle.advance(1 / 60)
+        expect(state.tankLevel).toBeGreaterThanOrEqual(0)
+        expect(state.tankLevel).toBeLessThanOrEqual(1)
+        expect(state.bowlHeight).toBeGreaterThanOrEqual(LOW_WATER_HEIGHT - 0.00001)
+        expect(state.bowlHeight).toBeLessThan(0.4)
+      }
+      cycle.advance(1 / 60)
+      expect(cycle.state.phase).toBe('ready')
+      expect(cycle.state.tankLevel).toBeCloseTo(1, 10)
+      expect(cycle.state.bowlHeight).toBeCloseTo(REST_WATER_HEIGHT, 10)
+      expect(cycle.state.inflow).toBe(0)
+    },
+  )
 })
