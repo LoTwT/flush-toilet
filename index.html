@@ -46,104 +46,107 @@
           </button>
         </div>
       </header>
-      <div class="intro">
-        <p class="eyebrow">A MOMENT OF QUIET</p>
-        <h1>水流过，<br />归于平静。</h1>
-        <p class="intro-note">轻轻一按，留给自己片刻空白。</p>
-      </div>
       <div class="loading" id="loading" role="status">正在准备画面<span></span></div>
-      <section class="settings" aria-label="水流设置">
-        <fieldset id="strength-options" disabled>
-          <legend>冲水力度 <span>座圈下沿出水</span></legend>
-          <div class="strength-options">
-            <label><input type="radio" name="strength" value="gentle" /><span>柔和</span></label>
-            <label
-              ><input type="radio" name="strength" value="standard" checked /><span
-                >标准</span
-              ></label
+      <div class="experience">
+        <div class="intro">
+          <p class="eyebrow">A MOMENT OF QUIET</p>
+          <h1>水流过，<br />归于平静。</h1>
+          <p class="intro-note">轻轻一按，留给自己片刻空白。</p>
+        </div>
+        <div class="scene-frame" aria-hidden="true"></div>
+        <section class="settings" aria-label="水流设置">
+          <fieldset id="strength-options" disabled>
+            <legend>冲水力度 <span>座圈下沿出水</span></legend>
+            <div class="strength-options">
+              <label><input type="radio" name="strength" value="gentle" /><span>柔和</span></label>
+              <label
+                ><input type="radio" name="strength" value="standard" checked /><span
+                  >标准</span
+                ></label
+              >
+              <label><input type="radio" name="strength" value="strong" /><span>强劲</span></label>
+            </div>
+          </fieldset>
+          <fieldset class="cleaner-options">
+            <legend>水箱洁厕块 <span>在水箱中溶解</span></legend>
+            <div class="color-options">
+              <label
+                ><input type="radio" name="cleaner" value="clear" /><span
+                  ><i class="swatch clear"></i>无添加</span
+                ></label
+              >
+              <label
+                ><input type="radio" name="cleaner" value="blue" checked /><span
+                  ><i class="swatch blue"></i>蓝色</span
+                ></label
+              >
+              <label
+                ><input type="radio" name="cleaner" value="mint" /><span
+                  ><i class="swatch mint"></i>薄荷</span
+                ></label
+              >
+              <label
+                ><input type="radio" name="cleaner" value="lavender" /><span
+                  ><i class="swatch lavender"></i>淡紫</span
+                ></label
+              >
+            </div>
+          </fieldset>
+        </section>
+        <main class="controls" aria-label="冲水控制">
+          <div class="cycle-status">
+            <div class="phase-status">
+              <span class="status-dot" id="status-dot"></span>
+              <p id="phase-label" role="status" aria-live="polite">准备就绪</p>
+            </div>
+            <button
+              class="boost-button"
+              id="boost-toggle"
+              type="button"
+              aria-pressed="false"
+              aria-label="Boost：冲完即可再冲"
+              title="开启后，冲水结束即可再次冲水，无需等待补水"
+              disabled
             >
-            <label><input type="radio" name="strength" value="strong" /><span>强劲</span></label>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+                <path d="m9 1-6 8h4l-1 6 7-9H9l1-5Z" stroke-linejoin="round" />
+              </svg>
+              Boost
+            </button>
           </div>
-        </fieldset>
-        <fieldset class="cleaner-options">
-          <legend>水箱洁厕块 <span>在水箱中溶解</span></legend>
-          <div class="color-options">
-            <label
-              ><input type="radio" name="cleaner" value="clear" /><span
-                ><i class="swatch clear"></i>无添加</span
-              ></label
+          <button class="flush-button" id="flush-button" type="button" disabled>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
             >
-            <label
-              ><input type="radio" name="cleaner" value="blue" checked /><span
-                ><i class="swatch blue"></i>蓝色</span
-              ></label
-            >
-            <label
-              ><input type="radio" name="cleaner" value="mint" /><span
-                ><i class="swatch mint"></i>薄荷</span
-              ></label
-            >
-            <label
-              ><input type="radio" name="cleaner" value="lavender" /><span
-                ><i class="swatch lavender"></i>淡紫</span
-              ></label
-            >
-          </div>
-        </fieldset>
-      </section>
-      <main class="controls" aria-label="冲水控制">
-        <div class="cycle-status">
-          <div class="phase-status">
-            <span class="status-dot" id="status-dot"></span>
-            <p id="phase-label" role="status" aria-live="polite">准备就绪</p>
-          </div>
-          <button
-            class="boost-button"
-            id="boost-toggle"
-            type="button"
-            aria-pressed="false"
-            aria-label="Boost：冲完即可再冲"
-            title="开启后，冲水结束即可再次冲水，无需等待补水"
-            disabled
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
-              <path d="m9 1-6 8h4l-1 6 7-9H9l1-5Z" stroke-linejoin="round" />
+              <path
+                d="M12 3C9.5 6.5 5.5 10.7 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.7 14.5 6.5 12 3Z"
+                stroke-linejoin="round"
+              />
+              <path d="M9 15a3 3 0 0 0 3 3" stroke-linecap="round" />
             </svg>
-            Boost
+            <span id="flush-label">冲水</span>
+            <kbd>空格</kbd>
           </button>
-        </div>
-        <button class="flush-button" id="flush-button" type="button" disabled>
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 3C9.5 6.5 5.5 10.7 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.7 14.5 6.5 12 3Z"
-              stroke-linejoin="round"
-            />
-            <path d="M9 15a3 3 0 0 0 3 3" stroke-linecap="round" />
-          </svg>
-          <span id="flush-label">冲水</span>
-          <kbd>空格</kbd>
-        </button>
-        <div class="tank-status">
-          <span id="tank-label">水箱已蓄满</span>
-          <div
-            class="tank-meter"
-            id="tank-meter"
-            role="progressbar"
-            aria-label="水箱储水量"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow="100"
-          >
-            <span id="tank-fill"></span>
+          <div class="tank-status">
+            <span id="tank-label">水箱已蓄满</span>
+            <div
+              class="tank-meter"
+              id="tank-meter"
+              role="progressbar"
+              aria-label="水箱储水量"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="100"
+            >
+              <span id="tank-fill"></span>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
       <footer class="footer">
         <span>一个小小的水循环</span><span>点击水箱按钮也可以冲水</span>
       </footer>

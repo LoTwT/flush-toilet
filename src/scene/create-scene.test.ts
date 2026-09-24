@@ -19,7 +19,7 @@ beforeEach(() => {
 })
 
 it('没有浮点颜色附件扩展时拒绝初始化并释放渲染器', async () => {
-  await expect(createScene({} as HTMLCanvasElement)).rejects.toThrow(
+  await expect(createScene({} as HTMLCanvasElement, {} as HTMLElement)).rejects.toThrow(
     'Floating-point render targets are not supported',
   )
   expect(renderer.dispose).toHaveBeenCalledOnce()
