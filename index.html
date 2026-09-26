@@ -12,7 +12,8 @@
     <div id="app">
       <canvas
         id="scene"
-        aria-label="白色陶瓷马桶的俯视三维场景，水箱顶部的圆形按钮可以冲水"
+        aria-label="白色陶瓷马桶的俯视三维场景，水箱按钮可冲水；摆放模式中可拖动排泄物，点选后用方向键微调，按住 Shift 加大步幅"
+        tabindex="-1"
       ></canvas>
       <header class="header">
         <a class="wordmark" href="./" aria-label="FLUSH 首页">FLUSH<span>.</span></a>
@@ -54,7 +55,7 @@
           <p class="intro-note">轻轻一按，留给自己片刻空白。</p>
         </div>
         <div class="scene-frame" aria-hidden="true"></div>
-        <section class="settings" aria-label="水流设置">
+        <section class="settings" aria-label="冲水体验设置">
           <fieldset id="strength-options" disabled>
             <legend>冲水力度 <span>座圈下沿出水</span></legend>
             <div class="strength-options">
@@ -92,6 +93,173 @@
               >
             </div>
           </fieldset>
+          <div class="excrement-section">
+            <fieldset class="placement-options" id="placement-options" hidden disabled>
+              <legend class="placement-heading">
+                <span class="placement-title"
+                  >编辑排泄物 <span id="piece-count" aria-live="polite">3 段</span></span
+                >
+              </legend>
+              <div class="placement-toolbar">
+                <select id="piece-select" aria-label="选择排泄物段落">
+                  <option value="0">第 1 段</option>
+                  <option value="1">第 2 段</option>
+                  <option value="2">第 3 段</option>
+                </select>
+                <div class="piece-stepper" role="group" aria-label="增减数量">
+                  <button
+                    id="piece-remove"
+                    type="button"
+                    aria-label="删除选中段"
+                    title="删除选中段"
+                  >
+                    −
+                  </button>
+                  <button id="piece-add" type="button" aria-label="添加一段" title="添加一段">
+                    +
+                  </button>
+                </div>
+              </div>
+              <div class="placement-tabs" role="group" aria-label="编辑内容">
+                <button
+                  id="placement-tab-quantity"
+                  type="button"
+                  aria-pressed="true"
+                  aria-controls="placement-quantity"
+                >
+                  数量
+                </button>
+                <button
+                  id="placement-tab-position"
+                  type="button"
+                  aria-pressed="false"
+                  aria-controls="placement-transform"
+                >
+                  摆放
+                </button>
+                <button
+                  id="placement-tab-shape"
+                  type="button"
+                  aria-pressed="false"
+                  aria-controls="placement-shape"
+                >
+                  形状
+                </button>
+              </div>
+              <div class="placement-panel" id="placement-quantity">
+                <div class="quantity-presets" role="group" aria-label="排泄物数量预设">
+                  <button id="quantity-small" type="button" aria-pressed="false">少</button>
+                  <button id="quantity-medium" type="button" aria-pressed="true">中</button>
+                  <button id="quantity-large" type="button" aria-pressed="false">多</button>
+                </div>
+              </div>
+              <p class="placement-empty placement-panel" id="placement-empty" hidden>
+                便池已清空，选择数量或点击 + 添加
+              </p>
+              <div class="placement-panel" id="placement-transform" hidden>
+                <div class="placement-range">
+                  <label for="placement-rotation">旋转</label>
+                  <input
+                    id="placement-rotation"
+                    type="range"
+                    min="-180"
+                    max="180"
+                    step="1"
+                    value="0"
+                  />
+                  <output id="placement-rotation-value" for="placement-rotation">0°</output>
+                </div>
+                <div class="placement-range">
+                  <label for="placement-size">大小</label>
+                  <input id="placement-size" type="range" min="65" max="130" step="1" value="100" />
+                  <output id="placement-size-value" for="placement-size">100%</output>
+                </div>
+              </div>
+              <div class="placement-panel" id="placement-shape" hidden>
+                <div class="placement-shape-kind">
+                  <label for="shape-kind">形态</label>
+                  <select id="shape-kind">
+                    <option value="log">长条</option>
+                    <option value="curved">弯曲</option>
+                    <option value="clump">团块</option>
+                  </select>
+                </div>
+                <div class="placement-range">
+                  <label for="shape-curvature">弯曲</label>
+                  <input
+                    id="shape-curvature"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value="75"
+                  />
+                  <output id="shape-curvature-value" for="shape-curvature">75%</output>
+                </div>
+                <div class="placement-range">
+                  <label for="shape-thickness">粗细</label>
+                  <input
+                    id="shape-thickness"
+                    type="range"
+                    min="65"
+                    max="145"
+                    step="1"
+                    value="100"
+                  />
+                  <output id="shape-thickness-value" for="shape-thickness">100%</output>
+                </div>
+              </div>
+            </fieldset>
+            <div class="excrement-control">
+              <div class="excrement-actions">
+                <button
+                  class="excrement-button"
+                  id="excrement-add"
+                  type="button"
+                  aria-describedby="excrement-note"
+                  disabled
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.3"
+                    aria-hidden="true"
+                  >
+                    <path class="excrement-add-icon" d="M10 4v12M4 10h12" stroke-linecap="round" />
+                    <path
+                      class="excrement-done-icon"
+                      d="m4 10 4 4 8-8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      class="excrement-edit-icon"
+                      d="m4 12 8-8 4 4-8 8H4v-4Zm6-6 4 4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <span id="excrement-label">放入排泄物</span>
+                </button>
+                <button
+                  class="mosaic-button"
+                  id="excrement-mosaic"
+                  type="button"
+                  aria-label="排泄物马赛克"
+                  aria-pressed="true"
+                  title="用柔和模糊遮挡排泄物"
+                  disabled
+                >
+                  <span>模糊马赛克</span>
+                  <span class="mosaic-switch" aria-hidden="true"></span>
+                </button>
+              </div>
+              <p class="excrement-note" id="excrement-note" role="status" aria-live="polite">
+                放入一份，看看水流如何带走它
+              </p>
+            </div>
+          </div>
         </section>
         <main class="controls" aria-label="冲水控制">
           <div class="cycle-status">
