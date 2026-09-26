@@ -4,6 +4,13 @@ export const CYCLE_DURATION = 12
 export const FLUSH_END_TIME = 5
 export const REST_WATER_HEIGHT = 0.32
 export const LOW_WATER_HEIGHT = 0.095
+export const MAX_EXCREMENT_PIECES = 12
+
+export const EXCREMENT_QUANTITY_PRESETS = {
+  small: { label: '少', count: 1 },
+  medium: { label: '中', count: 3 },
+  large: { label: '多', count: 6 },
+} as const
 
 export const FLUSH_STRENGTHS: Record<
   FlushStrength,

@@ -1,8 +1,14 @@
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { CLEANER_COLORS } from '../constants'
-import type { CleanerColor, FlushState, SceneController } from '../types'
+import type {
+  CleanerColor,
+  ExcrementPlacementController,
+  FlushState,
+  SceneController,
+} from '../types'
 import { bowlAtHeight } from './bowl-profile'
+import { createExcrement } from './excrement'
 import { createWaterGeometry } from './geometry'
 import { createToilet, OPEN_LID_ANGLE } from './toilet-model'
 import { createWaterSimulation } from './water-simulation'
@@ -111,6 +117,8 @@ export async function createScene(
 
   const toilet = createToilet()
   scene.add(toilet.group)
+  const excrement = createExcrement()
+  scene.add(excrement.group, excrement.marker)
   const background = new THREE.WebGLRenderTarget(1, 1, {
     type: THREE.HalfFloatType,
     samples: 4,
@@ -168,6 +176,10 @@ export async function createScene(
   const raycaster = new THREE.Raycaster()
   const pointer = new THREE.Vector2()
   const drawingSize = new THREE.Vector2()
+  const placementPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.32)
+  const placementPoint = new THREE.Vector3()
+  const dragOffset = new THREE.Vector2()
+  let dragging = false
   let time = 0
   let lidTarget = OPEN_LID_ANGLE
   const dyeColor = new THREE.Color(CLEANER_COLORS.blue.color)
@@ -175,6 +187,8 @@ export async function createScene(
   let disposed = false
 
   function captureBackground(): void {
+    const markerVisible = excrement.marker.visible
+    excrement.marker.visible = false
     water.visible = false
     wallFlow.visible = false
     renderer.setRenderTarget(background)
@@ -182,6 +196,7 @@ export async function createScene(
     renderer.setRenderTarget(null)
     water.visible = true
     wallFlow.visible = true
+    excrement.marker.visible = markerVisible
   }
 
   function resize(): void {
@@ -223,13 +238,16 @@ export async function createScene(
     if (disposed) return
     time += delta * (state.phase === 'ready' ? 0.09 : 1)
     const section = bowlAtHeight(state.bowlHeight)
+    placementPlane.constant = -state.bowlHeight
     fluid.update(state, section, delta)
+    const excrementMoved = excrement.update(state, delta)
+    excrement.prepareMosaic(renderer)
     const oldLidAngle = toilet.lid.rotation.x
     toilet.lid.rotation.x =
       Math.abs(oldLidAngle - lidTarget) < 0.001
         ? lidTarget
         : THREE.MathUtils.damp(oldLidAngle, lidTarget, 7, delta)
-    if (oldLidAngle !== toilet.lid.rotation.x) captureBackground()
+    if (oldLidAngle !== toilet.lid.rotation.x || excrementMoved) captureBackground()
     const uniforms = waterMaterial.uniforms
     uniforms.uWaterState.value = fluid.texture()
     uniforms.uTime.value = time
@@ -261,19 +279,75 @@ export async function createScene(
     lidTarget = closed ? 0 : OPEN_LID_ANGLE
   }
 
-  function hitsFlushButton(clientX: number, clientY: number): boolean {
+  function pointRay(clientX: number, clientY: number): void {
     const bounds = canvas.getBoundingClientRect()
     pointer.set(
       ((clientX - bounds.left) / bounds.width) * 2 - 1,
       -((clientY - bounds.top) / bounds.height) * 2 + 1,
     )
     raycaster.setFromCamera(pointer, camera)
+  }
+
+  function hitsFlushButton(clientX: number, clientY: number): boolean {
+    pointRay(clientX, clientY)
     return raycaster.intersectObject(toilet.button, true).length > 0
+  }
+
+  function placementAt(clientX: number, clientY: number): THREE.Vector3 | null {
+    if (disposed || Math.abs(toilet.lid.rotation.x - OPEN_LID_ANGLE) > 0.1) return null
+    pointRay(clientX, clientY)
+    return raycaster.ray.intersectPlane(placementPlane, placementPoint)
+  }
+
+  function pickExcrement(point: THREE.Vector3): number | null {
+    const padding = ((camera.top - camera.bottom) / canvas.clientHeight) * 8
+    return excrement.placement.pick(point.x, point.z, padding)
+  }
+
+  const excrementPlacement: ExcrementPlacementController = {
+    count: excrement.placement.count,
+    setCount: excrement.placement.setCount,
+    addPiece: excrement.placement.addPiece,
+    removeSelected: excrement.placement.removeSelected,
+    select: excrement.placement.select,
+    selection: excrement.placement.selection,
+    transform: excrement.placement.transform,
+    reshape: excrement.placement.reshape,
+    nudge: excrement.placement.nudge,
+    setEnabled: (enabled) => {
+      dragging = false
+      excrement.placement.setEnabled(enabled)
+    },
+    beginDrag: (clientX, clientY) => {
+      const point = placementAt(clientX, clientY)
+      const index = point ? pickExcrement(point) : null
+      if (index === null || !point) return false
+      excrement.placement.select(index)
+      const position = excrement.placement.position()
+      if (!position) return false
+      dragOffset.set(position.x - point.x, position.z - point.z)
+      dragging = true
+      return true
+    },
+    drag: (clientX, clientY) => {
+      if (!dragging) return
+      const point = placementAt(clientX, clientY)
+      if (point) excrement.placement.move(point.x + dragOffset.x, point.z + dragOffset.y)
+    },
+    endDrag: () => {
+      dragging = false
+    },
+    hits: (clientX, clientY) => {
+      const point = placementAt(clientX, clientY)
+      return point !== null && pickExcrement(point) !== null
+    },
   }
 
   function dispose(): void {
     if (disposed) return
     disposed = true
+    // 排泄物拥有动态增删的网格，统一由自身释放包含共享部分在内的资源。
+    scene.remove(excrement.group, excrement.marker)
     const geometries = new Set<THREE.BufferGeometry>()
     const materials = new Set<THREE.Material>()
     scene.traverse((object) => {
@@ -288,12 +362,14 @@ export async function createScene(
     floorTexture.dispose()
     background.dispose()
     fluid.dispose()
+    excrement.dispose()
     environment.dispose()
     sunlight.shadow.map?.dispose()
     renderer.dispose()
   }
 
   try {
+    excrement.prepareMosaic(renderer)
     await renderer.compileAsync(scene, camera)
     resize()
   } catch (error) {
@@ -301,5 +377,17 @@ export async function createScene(
     throw error
   }
 
-  return { update, setCleaner, setLidClosed, resize, hitsFlushButton, dispose }
+  return {
+    update,
+    setCleaner,
+    setLidClosed,
+    addExcrement: excrement.add,
+    flushExcrement: excrement.flush,
+    hasExcrement: () => excrement.group.visible,
+    setExcrementMosaic: excrement.setMosaic,
+    excrementPlacement,
+    resize,
+    hitsFlushButton,
+    dispose,
+  }
 }
