@@ -5,7 +5,7 @@ import { MAX_EXCREMENT_PIECES } from './constants'
 
 type AudioController = ReturnType<typeof createFlushAudio>
 
-const { scene, audio } = vi.hoisted(() => ({
+const { scene, audio, soundPreference } = vi.hoisted(() => ({
   scene: {
     update: vi.fn<(state: FlushState, delta: number) => void>(),
     setCleaner: vi.fn<SceneController['setCleaner']>(),
@@ -41,16 +41,18 @@ const { scene, audio } = vi.hoisted(() => ({
     setPaused: vi.fn<AudioController['setPaused']>(),
     dispose: vi.fn<AudioController['dispose']>(),
   },
+  soundPreference: { remembered: true as boolean | null },
 }))
 
 vi.mock('./scene/create-scene', () => ({ createScene: vi.fn<typeof createScene>() }))
 vi.mock('./audio', () => ({ createFlushAudio: () => audio }))
 vi.mock('./sound-preference', () => ({
-  readRememberedSound: () => true,
+  readRememberedSound: () => soundPreference.remembered,
   rememberSound: vi.fn<(enabled: boolean) => void>(),
 }))
 
 import { createScene } from './scene/create-scene'
+import { rememberSound } from './sound-preference'
 
 class PageElement extends EventTarget {
   disabled = false
@@ -60,6 +62,7 @@ class PageElement extends EventTarget {
   value = ''
   style = {}
   dataset = {}
+  checked = false
   classList = {
     add: vi.fn<DOMTokenList['add']>(),
     remove: vi.fn<DOMTokenList['remove']>(),
@@ -71,6 +74,12 @@ class PageElement extends EventTarget {
   hasPointerCapture = vi.fn<Element['hasPointerCapture']>().mockReturnValue(true)
   releasePointerCapture = vi.fn<Element['releasePointerCapture']>()
   replaceChildren = vi.fn<ParentNode['replaceChildren']>()
+  showModal = vi.fn<HTMLDialogElement['showModal']>(() => {
+    this.open = true
+  })
+  close = vi.fn<HTMLDialogElement['close']>(() => {
+    this.open = false
+  })
 }
 
 let elements: Map<string, PageElement>
@@ -78,8 +87,42 @@ let page: EventTarget & { hidden: boolean }
 let nextFrame: FrameRequestCallback | undefined
 let now: number
 
+// Node 环境没有 HTML 元素类；main.ts 的 instanceof 判断需要可用的全局类与对应实例。
+class PageButtonElement extends PageElement {}
+class PageInputElement extends PageElement {}
+class PageSelectElement extends PageElement {}
+
+const pageElementKinds: Record<string, new () => PageElement> = {
+  '#flush-button': PageButtonElement,
+  '#boost-toggle': PageButtonElement,
+  '#sound-toggle': PageButtonElement,
+  '#sound-keep-muted': PageButtonElement,
+  '#sound-enable': PageButtonElement,
+  '#lid-toggle': PageButtonElement,
+  '#excrement-add': PageButtonElement,
+  '#excrement-mosaic': PageButtonElement,
+  '#piece-add': PageButtonElement,
+  '#piece-remove': PageButtonElement,
+  '#placement-tab-quantity': PageButtonElement,
+  '#placement-tab-position': PageButtonElement,
+  '#placement-tab-shape': PageButtonElement,
+  '#quantity-small': PageButtonElement,
+  '#quantity-medium': PageButtonElement,
+  '#quantity-large': PageButtonElement,
+  '#sound-remember': PageInputElement,
+  '#placement-rotation': PageInputElement,
+  '#placement-size': PageInputElement,
+  '#shape-curvature': PageInputElement,
+  '#shape-thickness': PageInputElement,
+  '#piece-select': PageSelectElement,
+  '#shape-kind': PageSelectElement,
+}
+
 function element(selector: string): PageElement {
-  if (!elements.has(selector)) elements.set(selector, new PageElement())
+  if (!elements.has(selector)) {
+    const Kind = pageElementKinds[selector] ?? PageElement
+    elements.set(selector, new Kind())
+  }
   return elements.get(selector)!
 }
 
@@ -94,6 +137,7 @@ function renderAt(timestamp: number, currentTime = timestamp): void {
 beforeEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  soundPreference.remembered = true
   vi.mocked(createScene).mockResolvedValue(scene)
   let count = 3
   let selected = 0
@@ -149,6 +193,9 @@ beforeEach(() => {
   })
   vi.stubGlobal('document', page)
   vi.stubGlobal('window', new EventTarget())
+  vi.stubGlobal('HTMLButtonElement', PageButtonElement)
+  vi.stubGlobal('HTMLInputElement', PageInputElement)
+  vi.stubGlobal('HTMLSelectElement', PageSelectElement)
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     nextFrame = callback
     return 1
@@ -679,5 +726,96 @@ describe('排泄物操作', () => {
     element('#excrement-add').dispatchEvent(new Event('click'))
     expect(element('#piece-count').textContent).toBe('1 段')
     expect(element('#placement-options').hidden).toBe(false)
+  })
+})
+
+describe('空格冲水', () => {
+  function pressSpace(target: string, options: { repeat?: boolean } = {}): Event {
+    const event = Object.assign(new Event('keydown', { cancelable: true }), {
+      code: 'Space',
+      repeat: false,
+      ...options,
+    })
+    Object.defineProperty(event, 'target', { value: element(target) })
+    window.dispatchEvent(event)
+    return event
+  }
+
+  it('画布聚焦时空格立即冲水', async () => {
+    await import('./main')
+    const event = pressSpace('#scene')
+    expect(event.defaultPrevented).toBe(true)
+    expect(scene.flushExcrement).toHaveBeenCalledOnce()
+    expect(audio.unlock).toHaveBeenCalledOnce()
+  })
+
+  it('焦点在下拉框时空格不冲水，也不吞掉控件的按键', async () => {
+    await import('./main')
+    const event = pressSpace('#piece-select')
+    expect(event.defaultPrevented).toBe(false)
+    expect(scene.flushExcrement).not.toHaveBeenCalled()
+  })
+
+  it('按住空格产生的重复按键不会再次冲水', async () => {
+    await import('./main')
+    renderAt(1000)
+    element('#boost-toggle').dispatchEvent(new Event('click'))
+    pressSpace('#scene')
+    expect(scene.flushExcrement).toHaveBeenCalledOnce()
+    // Boost 在冲刷结束后解锁，此时重复事件如果不被忽略会立即开始新一轮。
+    renderAt(6000)
+    const event = pressSpace('#scene', { repeat: true })
+    expect(event.defaultPrevented).toBe(false)
+    expect(scene.flushExcrement).toHaveBeenCalledOnce()
+  })
+
+  it('首次声音询问打开时空格不冲水，也不抢占弹窗的按键', async () => {
+    await import('./main')
+    element('#sound-dialog').open = true
+    const event = pressSpace('#scene')
+    expect(event.defaultPrevented).toBe(false)
+    expect(scene.flushExcrement).not.toHaveBeenCalled()
+  })
+})
+
+describe('首次声音询问', () => {
+  it('未勾选记住时，选择开启声音不保存偏好', async () => {
+    soundPreference.remembered = null
+    await import('./main')
+    expect(element('#sound-dialog').open).toBe(true)
+    element('#sound-enable').dispatchEvent(new Event('click'))
+    expect(element('#sound-dialog').open).toBe(false)
+    expect(element('#sound-label').textContent).toBe('声音已开启')
+    expect(rememberSound).not.toHaveBeenCalled()
+  })
+
+  it('勾选记住后保存所选声音状态', async () => {
+    soundPreference.remembered = null
+    await import('./main')
+    element('#sound-remember').checked = true
+    element('#sound-enable').dispatchEvent(new Event('click'))
+    expect(rememberSound).toHaveBeenLastCalledWith(true)
+    expect(element('#sound-label').textContent).toBe('声音已开启')
+  })
+
+  it('按 Escape 关闭询问时保持静音，即使勾选记住也不保存', async () => {
+    soundPreference.remembered = null
+    await import('./main')
+    element('#sound-remember').checked = true
+    element('#sound-dialog').dispatchEvent(new Event('cancel', { cancelable: true }))
+    expect(element('#sound-label').textContent).toBe('声音已关闭')
+    expect(rememberSound).not.toHaveBeenCalled()
+    expect(element('#sound-dialog').open).toBe(false)
+  })
+
+  it('音频解锁失败后回退为静音，按钮显示声音已关闭', async () => {
+    soundPreference.remembered = null
+    audio.unlock.mockRejectedValueOnce(new Error('Audio unlock failed'))
+    await import('./main')
+    element('#sound-enable').dispatchEvent(new Event('click'))
+    expect(element('#sound-label').textContent).toBe('声音已开启')
+    await Promise.resolve()
+    expect(element('#sound-label').textContent).toBe('声音已关闭')
+    expect(audio.setEnabled).toHaveBeenLastCalledWith(false)
   })
 })

@@ -176,7 +176,8 @@ export async function createScene(
   const raycaster = new THREE.Raycaster()
   const pointer = new THREE.Vector2()
   const drawingSize = new THREE.Vector2()
-  const placementPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.32)
+  // 相机垂直向下、射线竖直，平面高度不影响命中的 x/z，无需跟随水位。
+  const placementPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   const placementPoint = new THREE.Vector3()
   const dragOffset = new THREE.Vector2()
   let dragging = false
@@ -238,7 +239,6 @@ export async function createScene(
     if (disposed) return
     time += delta * (state.phase === 'ready' ? 0.09 : 1)
     const section = bowlAtHeight(state.bowlHeight)
-    placementPlane.constant = -state.bowlHeight
     fluid.update(state, section, delta)
     const excrementMoved = excrement.update(state, delta)
     excrement.prepareMosaic(renderer)
