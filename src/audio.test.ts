@@ -1,6 +1,47 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createFlushAudio, getAudioLevels } from './audio'
 import { sampleFlush } from './simulation/flush-cycle'
+
+afterEach(() => vi.unstubAllGlobals())
+
+// 用假的 AudioContext 与 fetch 驱动播放引擎，记录每个声部的接入进度。
+function fakeAudio() {
+  const starts: { offset: number; stopped: boolean }[] = []
+  const param = () => ({ value: 0, setTargetAtTime: vi.fn<AudioParam['setTargetAtTime']>() })
+  class FakeContext {
+    currentTime = 0
+    destination = {}
+    createGain = () => ({ gain: param(), connect: vi.fn<AudioNode['connect']>() })
+    createBiquadFilter = () => ({
+      type: '',
+      frequency: param(),
+      Q: param(),
+      connect: vi.fn<AudioNode['connect']>(),
+    })
+    createBufferSource = () => {
+      const record = { offset: Number.NaN, stopped: false }
+      return {
+        buffer: null,
+        connect: vi.fn<AudioNode['connect']>(),
+        disconnect: vi.fn<AudioNode['disconnect']>(),
+        onended: null,
+        start: (_when: number, offset: number) => {
+          record.offset = offset
+          starts.push(record)
+        },
+        stop: () => {
+          record.stopped = true
+        },
+      }
+    }
+    resume = async () => {}
+    close = async () => {}
+    decodeAudioData = async () => ({ duration: 20 })
+  }
+  vi.stubGlobal('AudioContext', FakeContext)
+  vi.stubGlobal('fetch', async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }))
+  return starts
+}
 
 describe('分阶段水声', () => {
   it('默认静音，未开启时不会创建或加载音频', async () => {
@@ -41,5 +82,39 @@ describe('分阶段水声', () => {
     expect(gentle.flush).toBeLessThan(standard.flush)
     expect(standard.flush).toBeLessThan(strong.flush)
     expect(gentle.refill).toBe(strong.refill)
+  })
+})
+
+describe('录音播放引擎', () => {
+  it('暂停恢复后各声部从原进度续播，不从录音开头重播', async () => {
+    const starts = fakeAudio()
+    const audio = createFlushAudio()
+    audio.setEnabled(true)
+    await audio.unlock()
+    audio.update(sampleFlush(3))
+    audio.setPaused(true)
+    audio.setPaused(false)
+    audio.update(sampleFlush(6))
+    // 冲刷声部按动画时间接入，补水声部从自身的接入时刻起算。
+    const offsets = starts.map((voice) => voice.offset)
+    expect(offsets).toHaveLength(4)
+    expect(offsets[0]).toBeCloseTo(3)
+    expect(offsets[1]).toBeCloseTo(1.9)
+    expect(offsets[2]).toBeCloseTo(6)
+    expect(offsets[3]).toBeCloseTo(4.9)
+    audio.dispose()
+  })
+
+  it('时间轴回退时停止旧声部，新循环从头接入', async () => {
+    const starts = fakeAudio()
+    const audio = createFlushAudio()
+    audio.setEnabled(true)
+    await audio.unlock()
+    audio.update(sampleFlush(6))
+    audio.update(sampleFlush(0.1))
+    for (const voice of starts.slice(0, 2)) expect(voice.stopped).toBe(true)
+    expect(starts[2].offset).toBeCloseTo(0.1)
+    expect(starts[3].offset).toBeCloseTo(0)
+    audio.dispose()
   })
 })

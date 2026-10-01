@@ -13,7 +13,6 @@ export interface FlushState {
   phase: FlushPhase
   strength: FlushStrength
   elapsed: number
-  progress: number
   tankLevel: number
   bowlHeight: number
   inflow: number

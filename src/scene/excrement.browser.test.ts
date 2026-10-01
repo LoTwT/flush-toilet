@@ -1,9 +1,11 @@
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import * as THREE from 'three'
 import { CYCLE_DURATION } from '../constants'
 import { sampleFlush } from '../simulation/flush-cycle'
 import { createScene } from './create-scene'
 import { createExcrement } from './excrement'
+
+afterEach(() => vi.restoreAllMocks())
 
 function pixels(canvas: HTMLCanvasElement): Uint8Array {
   const gl = canvas.getContext('webgl2')!
@@ -44,6 +46,31 @@ it('清空后实际水面恢复为空便池，没有沿用折射背景中的旧�
     for (const [index, value] of cleared.entries())
       maxDifference = Math.max(maxDifference, Math.abs(value - empty[index]))
     expect(maxDifference).toBeLessThanOrEqual(1)
+  } finally {
+    controller.dispose()
+    canvas.remove()
+  }
+}, 15_000)
+
+it('水面模拟按真实时间步推进，画面保持正常且没有着色器编译错误', async () => {
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const canvas = document.createElement('canvas')
+  canvas.style.cssText = 'width: 256px; height: 320px;'
+  document.body.append(canvas)
+  const controller = await createScene(canvas, canvas)
+  try {
+    const state = sampleFlush(CYCLE_DURATION)
+    controller.update(state, 0)
+    const reference = pixels(canvas)
+    // 非零时间步才会执行 GPU 积分循环，覆盖模拟渲染目标的切换与恢复。
+    controller.update(state, 0.05)
+    let maxDifference = 0
+    for (const [index, value] of pixels(canvas).entries())
+      maxDifference = Math.max(maxDifference, Math.abs(value - reference[index]))
+    expect(maxDifference).toBeLessThan(40)
+    // 强进水阶段继续推进；着色器错误只会写入 console.error，不会抛出异常。
+    controller.update(sampleFlush(1), 0.05)
+    expect(consoleError).not.toHaveBeenCalled()
   } finally {
     controller.dispose()
     canvas.remove()

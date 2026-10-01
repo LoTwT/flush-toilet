@@ -48,7 +48,6 @@ export function sampleFlush(
     phase,
     strength,
     elapsed: time,
-    progress: time / CYCLE_DURATION,
     tankLevel: Math.max(
       0,
       Math.min(1, initialWater.tankLevel - drainedVolume * tankDrain + refill),

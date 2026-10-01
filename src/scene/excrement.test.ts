@@ -8,6 +8,7 @@ import {
 } from '../constants'
 import { FlushCycle, sampleFlush } from '../simulation/flush-cycle'
 import { createExcrement } from './excrement'
+import { createExcrementGeometry } from './excrement-model'
 import { bowlAtHeight } from './bowl-profile'
 import * as mosaicBaker from './excrement-mosaic'
 
@@ -54,6 +55,36 @@ it('Boost 补水期间放入的一份保留到下一次冲水，并贴合当前�
   excrement.add(sampleFlush(5.2))
   excrement.update(sampleFlush(5.3), 0.1)
   expect(excrement.group.visible).toBe(true)
+})
+
+it('新增段落单独落水，不重播已浮稳的旧段', () => {
+  const excrement = createExcrement()
+  const rest = sampleFlush(CYCLE_DURATION)
+  excrement.add(rest)
+  excrement.placement.setEnabled(true)
+  excrement.update(rest, 3)
+  excrement.placement.addPiece()
+  const added = excrement.group.children[3]
+  // 旧段落已随动画浮稳，新段落刚加入，应仍处于独立的落水中。
+  for (const piece of excrement.group.children.slice(0, 3))
+    expect(added.position.y - piece.position.y).toBeGreaterThan(0.2)
+})
+
+it('冲走后再次放入，所有段落重新落水并一起浮稳', () => {
+  const excrement = createExcrement()
+  const rest = sampleFlush(CYCLE_DURATION)
+  excrement.add(rest)
+  excrement.placement.setEnabled(true)
+  excrement.update(rest, 3)
+  excrement.placement.addPiece()
+  excrement.flush()
+  excrement.update(sampleFlush(FLUSH_END_TIME), FLUSH_END_TIME)
+  expect(excrement.group.visible).toBe(false)
+  excrement.add(rest)
+  excrement.update(rest, 0.6)
+  // 重新放入的一份整体重播落水，0.6 秒后全部贴近当前水位。
+  for (const piece of excrement.group.children)
+    expect(Math.abs(piece.position.y - (rest.bowlHeight + 0.012))).toBeLessThan(0.02)
 })
 
 it.each([1 / 30, 1 / 144, 1.5, 12])('帧间隔 %s 秒时都能完成清空，不遗漏跨阶段的长帧', (delta) => {
@@ -437,8 +468,14 @@ it('支持数量上限并限制冲水中增删，重复增删后的网格有效�
   for (const piece of excrement.group.children) {
     const geometry = (piece.children[0] as THREE.Mesh).geometry
     expect(Array.from(geometry.getAttribute('position').array).every(Number.isFinite)).toBe(true)
-    expect(geometry.boundingBox!.max.z - geometry.boundingBox!.min.z).toBeGreaterThan(0.05)
   }
+  // 长度按编号取模衰减，连续增删到高编号时长条也不能缩成短团。
+  const span = (variant: number): number => {
+    const bounds = createExcrementGeometry(variant).boundingBox!
+    return bounds.max.z - bounds.min.z
+  }
+  for (let variant = 3; variant < 60; variant++)
+    expect(Math.abs(span(variant) - span(variant % 3))).toBeLessThan(0.03)
   excrement.flush()
   excrement.placement.removeSelected()
   excrement.placement.addPiece()
