@@ -1,25 +1,39 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createFlushAudio, getAudioLevels } from './audio'
+import { createFlushAudio, getAudioLevels, LID_MUFFLE, VOICE_RELEASE } from './audio'
 import { sampleFlush } from './simulation/flush-cycle'
 
 afterEach(() => vi.unstubAllGlobals())
 
 // 用假的 AudioContext 与 fetch 驱动播放引擎，记录每个声部的接入进度。
 function fakeAudio() {
-  const starts: { offset: number; stopped: boolean }[] = []
+  const starts: { offset: number; stopped: boolean; stopAt: number }[] = []
+  const gains: ReturnType<typeof param>[] = []
+  const filters: { frequency: ReturnType<typeof param> }[] = []
   const param = () => ({ value: 0, setTargetAtTime: vi.fn<AudioParam['setTargetAtTime']>() })
   class FakeContext {
     currentTime = 0
     destination = {}
-    createGain = () => ({ gain: param(), connect: vi.fn<AudioNode['connect']>() })
-    createBiquadFilter = () => ({
-      type: '',
-      frequency: param(),
-      Q: param(),
-      connect: vi.fn<AudioNode['connect']>(),
-    })
+    createGain = () => {
+      const gain = param()
+      gains.push(gain)
+      return {
+        gain,
+        connect: vi.fn<AudioNode['connect']>(),
+        disconnect: vi.fn<AudioNode['disconnect']>(),
+      }
+    }
+    createBiquadFilter = () => {
+      const filter = {
+        type: '',
+        frequency: param(),
+        Q: param(),
+        connect: vi.fn<AudioNode['connect']>(),
+      }
+      filters.push(filter)
+      return filter
+    }
     createBufferSource = () => {
-      const record = { offset: Number.NaN, stopped: false }
+      const record = { offset: Number.NaN, stopped: false, stopAt: Number.NaN }
       return {
         buffer: null,
         connect: vi.fn<AudioNode['connect']>(),
@@ -29,8 +43,9 @@ function fakeAudio() {
           record.offset = offset
           starts.push(record)
         },
-        stop: () => {
+        stop: (when = 0) => {
           record.stopped = true
+          record.stopAt = when
         },
       }
     }
@@ -40,7 +55,7 @@ function fakeAudio() {
   }
   vi.stubGlobal('AudioContext', FakeContext)
   vi.stubGlobal('fetch', async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }))
-  return starts
+  return Object.assign(starts, { gains, filters })
 }
 
 describe('分阶段水声', () => {
@@ -72,6 +87,15 @@ describe('分阶段水声', () => {
       const refill = getAudioLevels(sampleFlush(elapsed)).refill
       expect(refill).toBeGreaterThan(0)
       expect(refill).toBeLessThanOrEqual(gentleFlush / 2)
+    }
+  })
+
+  it('合盖只让便池冲刷声变闷变轻，水箱补水声保持不变', () => {
+    for (const elapsed of [0.8, 2, 3, 6]) {
+      const open = getAudioLevels(sampleFlush(elapsed))
+      const closed = getAudioLevels(sampleFlush(elapsed), true)
+      expect(closed.flush).toBeCloseTo(open.flush * LID_MUFFLE.gain)
+      expect(closed.refill).toBe(open.refill)
     }
   })
 
@@ -115,6 +139,44 @@ describe('录音播放引擎', () => {
     for (const voice of starts.slice(0, 2)) expect(voice.stopped).toBe(true)
     expect(starts[2].offset).toBeCloseTo(0.1)
     expect(starts[3].offset).toBeCloseTo(0)
+    audio.dispose()
+  })
+
+  it('Boost 重启时旧声部按自身包络淡出后停止，不被新一轮的音量覆盖而截断', async () => {
+    const starts = fakeAudio()
+    const audio = createFlushAudio()
+    audio.setEnabled(true)
+    await audio.unlock()
+    audio.update(sampleFlush(5.2))
+    // 前两个增益节点是冲刷与补水声道，其后每个声部各有一个包络。
+    const oldEnvelopes = starts.gains.slice(2, 4)
+    audio.update(sampleFlush(0))
+    for (const envelope of oldEnvelopes)
+      expect(envelope.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, VOICE_RELEASE)
+    for (const voice of starts.slice(0, 2)) expect(voice.stopAt).toBeGreaterThan(VOICE_RELEASE * 4)
+    // 新声部各自从静音淡入，不继承旧声部的包络。
+    for (const envelope of starts.gains.slice(4)) {
+      expect(envelope.value).toBe(0)
+      expect(envelope.setTargetAtTime.mock.calls[0][0]).toBe(1)
+    }
+    audio.dispose()
+  })
+
+  it('合盖时冲刷声道的低通频率降低，掀盖后恢复按力度设置', async () => {
+    const starts = fakeAudio()
+    const audio = createFlushAudio()
+    audio.setEnabled(true)
+    await audio.unlock()
+    const frequency = starts.filters[0].frequency.setTargetAtTime
+    audio.update(sampleFlush(1))
+    const open = frequency.mock.lastCall![0]
+    audio.setLidClosed(true)
+    audio.update(sampleFlush(1.1))
+    expect(frequency.mock.lastCall![0]).toBe(LID_MUFFLE.cutoff)
+    expect(LID_MUFFLE.cutoff).toBeLessThan(open / 2)
+    audio.setLidClosed(false)
+    audio.update(sampleFlush(1.2))
+    expect(frequency.mock.lastCall![0]).toBe(open)
     audio.dispose()
   })
 })

@@ -7,6 +7,7 @@ uniform float uSwirl;
 uniform float uSuction;
 uniform float uHeight;
 uniform vec2 uDrain;
+uniform vec3 uSplashes[MAX_SPLASHES];
 varying vec2 vUv;
 
 float surfaceAt(vec2 uv, float center) {
@@ -43,9 +44,18 @@ void main() {
     impact += jet * max(0.0, uInflow - 0.2) * (0.7 + pulse * 0.3);
   }
   float speed = (previous.g + (laplacian * 0.09 + force) * uStep) * exp(-uStep * 1.1);
+  // 物件入水压下水面，环形波由波动方程向外传播并被陶瓷边界反射。
+  float splashFoam = 0.0;
+  for (int index = 0; index < MAX_SPLASHES; index++) {
+    vec3 splash = uSplashes[index];
+    vec2 offset = p - splash.xy;
+    speed -= splash.z * exp(-dot(offset, offset) * 140.0);
+    splashFoam += splash.z * exp(-dot(offset, offset) * 90.0);
+  }
   float height = (previous.r + speed * uStep) * exp(-uStep * 0.35);
   float drain = exp(-dot(p - uDrain, p - uDrain) * 35.0) * uSuction;
-  float foam = previous.b * exp(-uStep * (0.5 + drain * 3.0)) + impact * uStep * 2.4;
+  float foam = previous.b * exp(-uStep * (0.5 + drain * 3.0)) + impact * uStep * 2.4
+    + splashFoam * 0.25;
   float settling = 1.0 - smoothstep(0.05, 0.3, uSwirl);
   float streak = previous.a * exp(-uStep * (0.24 + drain * 3.5 + settling));
   float bowlRadius = length(p);

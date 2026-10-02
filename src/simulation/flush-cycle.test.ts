@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CYCLE_DURATION, FLUSH_END_TIME, LOW_WATER_HEIGHT, REST_WATER_HEIGHT } from '../constants'
+import {
+  BOWL_SECTIONS,
+  CYCLE_DURATION,
+  FLUSH_END_TIME,
+  LOW_WATER_HEIGHT,
+  REST_WATER_HEIGHT,
+} from '../constants'
 import { FlushCycle, sampleFlush } from './flush-cycle'
 
 describe('一次完整冲水', () => {
@@ -62,8 +68,27 @@ describe('一次完整冲水', () => {
     expect(sampleFlush(1).bowlHeight).toBeGreaterThan(REST_WATER_HEIGHT)
     expect(sampleFlush(4).tankLevel).toBeGreaterThan(sampleFlush(3).tankLevel)
     expect(sampleFlush(4).inflow).toBeGreaterThan(0)
-    expect(sampleFlush(4.85).bowlHeight).toBeCloseTo(LOW_WATER_HEIGHT)
+    expect(sampleFlush(3.3).bowlHeight).toBeCloseTo(LOW_WATER_HEIGHT)
     expect(sampleFlush(8).bowlHeight).toBeGreaterThan(sampleFlush(6).bowlHeight)
+  })
+
+  it('虹吸在录音的断流咕噜声前后完成：先升水，再快速降到低位并停止吸力', () => {
+    const peak = Math.max(...[1, 1.2, 1.4, 1.6].map((time) => sampleFlush(time).bowlHeight))
+    expect(peak).toBeGreaterThan(REST_WATER_HEIGHT + 0.05)
+    expect(sampleFlush(2.4).suction).toBeGreaterThan(0.9)
+    expect(sampleFlush(2.4).bowlHeight).toBeLessThan(REST_WATER_HEIGHT)
+    expect(sampleFlush(2.7).bowlHeight).toBeCloseTo(LOW_WATER_HEIGHT)
+    // 水退到底时座圈水流仍在沿侧壁冲下，之后才减弱。
+    expect(sampleFlush(2.7).inflow).toBeGreaterThan(sampleFlush(2).inflow * 0.9)
+    // 断流时水面退入排水口，便池里不再留一汪水；存水弯内的水封高于喉口底部。
+    expect(LOW_WATER_HEIGHT).toBeLessThan(BOWL_SECTIONS[0].height)
+    expect(LOW_WATER_HEIGHT).toBeGreaterThan(-0.2)
+    expect(sampleFlush(3.4).suction).toBe(0)
+    // 水箱排空后座圈进水明显减弱，只剩补水管的细流。
+    expect(sampleFlush(4).inflow).toBeLessThan(sampleFlush(2).inflow * 0.2)
+    // 便池回升先于水箱蓄满。
+    expect(sampleFlush(8).bowlHeight).toBeCloseTo(REST_WATER_HEIGHT)
+    expect(sampleFlush(8).tankLevel).toBeLessThan(1)
   })
 
   it('不同帧率到达相同时间时有相同状态', () => {

@@ -2,18 +2,35 @@ import { CYCLE_DURATION, FLUSH_STRENGTHS } from './constants'
 import { smoothRange } from './simulation/flush-cycle'
 import type { FlushAudio, FlushState } from './types'
 
-const REFILL_START = 1.1
+export const REFILL_START = 1.1
+// 合盖后便池开口被遮住，声音主要从座圈下的缝隙透出：直达声和高频减弱。
+// 补水声来自固定合上的水箱，不随马桶盖改变。
+export const LID_MUFFLE = { gain: 0.72, cutoff: 1700 }
+// 每个声部独立淡入淡出，停止旧声部时不会被新一轮的音量包络覆盖而截断。
+export const VOICE_RELEASE = 0.03
+const VOICE_ATTACK = 0.012
 
-export function getAudioLevels(state: FlushState): { flush: number; refill: number } {
+export function getAudioLevels(
+  state: FlushState,
+  lidClosed = false,
+): { flush: number; refill: number } {
   if (state.phase === 'ready') return { flush: 0, refill: 0 }
   return {
-    flush: FLUSH_STRENGTHS[state.strength].sound * (1 - smoothRange(4.3, 5, state.elapsed)),
+    flush:
+      FLUSH_STRENGTHS[state.strength].sound *
+      (lidClosed ? LID_MUFFLE.gain : 1) *
+      (1 - smoothRange(4.3, 5, state.elapsed)),
     // 水箱盖固定合上，补水声应轻于便池内的冲刷声。
     refill:
       0.28 *
       smoothRange(REFILL_START, 1.8, state.elapsed) *
       (1 - smoothRange(11, 11.2, state.elapsed)),
   }
+}
+
+interface Voice {
+  source: AudioBufferSourceNode
+  envelope: GainNode
 }
 
 export function createFlushAudio(): FlushAudio {
@@ -24,11 +41,12 @@ export function createFlushAudio(): FlushAudio {
   let refillGain: GainNode | undefined
   let flushFilter: BiquadFilterNode | undefined
   let loading: Promise<void> | undefined
-  let voices: AudioBufferSourceNode[] = []
+  let voices: Voice[] = []
   let playing = false
   let enabled = false
   let paused = false
   let disposed = false
+  let lidClosed = false
   let lastElapsed = CYCLE_DURATION
   const requests = new AbortController()
 
@@ -77,9 +95,11 @@ export function createFlushAudio(): FlushAudio {
 
   function stopPlayback(): void {
     if (!context) return
-    flushGain?.gain.setTargetAtTime(0, context.currentTime, 0.01)
-    refillGain?.gain.setTargetAtTime(0, context.currentTime, 0.01)
-    for (const voice of voices) voice.stop(context.currentTime + 0.04)
+    const now = context.currentTime
+    for (const { source, envelope } of voices) {
+      envelope.gain.setTargetAtTime(0, now, VOICE_RELEASE)
+      source.stop(now + VOICE_RELEASE * 6)
+    }
     voices = []
     playing = false
   }
@@ -93,12 +113,20 @@ export function createFlushAudio(): FlushAudio {
     if (!context) return
     const offset = Math.max(0, elapsed - startsAt)
     if (offset >= buffer.duration) return
-    const voice = context.createBufferSource()
-    voice.buffer = buffer
-    voice.connect(gain)
-    voice.onended = (): void => voice.disconnect()
-    voice.start(context.currentTime + Math.max(0, startsAt - elapsed), offset)
-    voices.push(voice)
+    const source = context.createBufferSource()
+    const envelope = context.createGain()
+    const when = context.currentTime + Math.max(0, startsAt - elapsed)
+    source.buffer = buffer
+    envelope.gain.value = 0
+    envelope.gain.setTargetAtTime(1, when, VOICE_ATTACK)
+    source.connect(envelope)
+    envelope.connect(gain)
+    source.onended = (): void => {
+      source.disconnect()
+      envelope.disconnect()
+    }
+    source.start(when, offset)
+    voices.push({ source, envelope })
   }
 
   function update(state: FlushState): void {
@@ -124,14 +152,15 @@ export function createFlushAudio(): FlushAudio {
       playing = true
     }
     lastElapsed = state.elapsed
-    const levels = getAudioLevels(state)
+    const levels = getAudioLevels(state, lidClosed)
     const now = context.currentTime
     flushGain.gain.setTargetAtTime(levels.flush, now, 0.04)
     refillGain.gain.setTargetAtTime(levels.refill, now, 0.1)
+    // 时间常数与盖子开合的缓动相近，闷化随盖子位置逐渐变化。
     flushFilter.frequency.setTargetAtTime(
-      4400 + FLUSH_STRENGTHS[state.strength].pressure * 1800,
+      lidClosed ? LID_MUFFLE.cutoff : 4400 + FLUSH_STRENGTHS[state.strength].pressure * 1800,
       now,
-      0.1,
+      lidClosed ? 0.12 : 0.1,
     )
   }
 
@@ -145,6 +174,10 @@ export function createFlushAudio(): FlushAudio {
     if (value) stopPlayback()
   }
 
+  function setLidClosed(value: boolean): void {
+    lidClosed = value
+  }
+
   function dispose(): void {
     disposed = true
     requests.abort()
@@ -152,5 +185,5 @@ export function createFlushAudio(): FlushAudio {
     void context?.close()
   }
 
-  return { unlock, update, setEnabled, setPaused, dispose }
+  return { unlock, update, setEnabled, setPaused, setLidClosed, dispose }
 }

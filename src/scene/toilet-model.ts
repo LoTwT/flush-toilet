@@ -4,6 +4,7 @@ import { BOWL_SECTIONS } from '../constants'
 import { createBowlGeometry, createOvalLid, createOvalRing, createSeatGeometry } from './geometry'
 
 export const OPEN_LID_ANGLE = (-Math.PI * 112) / 180
+const DRAIN_CENTER_Z = BOWL_SECTIONS[0].centerZ
 
 export function createToilet(): {
   group: THREE.Group
@@ -101,28 +102,58 @@ export function createToilet(): {
     addMesh(new RoundedBoxGeometry(0.09, 0.06, 0.18, 3, 0.018), seatMaterial, x, 0.873, 0.4)
   }
 
-  // 水封下的陶瓷喉口保持可见的深度；排水时不会露出一个平面贴片。
-  const throat = addMesh(
-    new THREE.CylinderGeometry(0.125, 0.095, 0.1, 64, 1, true),
-    new THREE.MeshStandardMaterial({ color: '#737e79', roughness: 0.28, side: THREE.BackSide }),
-    0,
-    -0.151,
-    -0.19,
-  )
-  throat.scale.z = 1.1
+  // 喉口与存水弯都是白色釉面陶瓷，与内腔底部截面同尺寸衔接。俯视发暗只因排水道
+  // 在底部向后转弯上行、光线照不进去：亮度沿深度逐渐降低，朝水箱一侧的转弯处最暗。
+  const throatGeometry = new THREE.CylinderGeometry(0.125, 0.072, 0.1, 64, 6, true)
+  const throatPositions = throatGeometry.getAttribute('position')
+  const throatColors = new Float32Array(throatPositions.count * 3)
+  for (let index = 0; index < throatPositions.count; index++) {
+    const depth = THREE.MathUtils.clamp(0.5 - throatPositions.getY(index) / 0.1, 0, 1)
+    const back = THREE.MathUtils.clamp(-throatPositions.getZ(index) / 0.125, -1, 1)
+    // 顶部与内腔底部的实际亮度衔接，再沿深度单调变暗，交接处不形成亮环或暗环。
+    const shade = 0.5 - depth * (0.23 + 0.1 * back)
+    throatColors.set([shade * 0.98, shade, shade * 0.99], index * 3)
+  }
+  throatGeometry.setAttribute('color', new THREE.BufferAttribute(throatColors, 3))
+  // 只渲染背面；不用带清漆层的物理材质，其清漆法线在背面会出现黑色锯齿。
+  const throatMaterial = new THREE.MeshStandardMaterial({
+    color: ceramic.color,
+    roughness: ceramic.roughness,
+    vertexColors: true,
+    side: THREE.BackSide,
+  })
+  const throat = addMesh(throatGeometry, throatMaterial, 0, -0.151, DRAIN_CENTER_Z)
+  throat.scale.z = BOWL_SECTIONS[0].radiusZ / BOWL_SECTIONS[0].radiusX
+  // 喉口下方看到的是存水弯转弯处的陶瓷壁：前侧仍有少量反射光，后侧通向排水道最暗。
+  const drainFloorGeometry = new THREE.CircleGeometry(0.073, 64)
+  const floorPositions = drainFloorGeometry.getAttribute('position')
+  const floorColors = new Float32Array(floorPositions.count * 3)
+  for (let index = 0; index < floorPositions.count; index++) {
+    // 圆盘绕 x 轴转平后，局部 +y 指向水箱一侧。
+    const back = THREE.MathUtils.smoothstep(floorPositions.getY(index) / 0.073, -1, 1)
+    // 底面正对顶光，遮蔽系数需低于斜向受光的内壁，才能与喉口底部的亮度衔接。
+    const shade = 0.07 - back * 0.04
+    floorColors.set([shade * 0.98, shade, shade * 0.99], index * 3)
+  }
+  drainFloorGeometry.setAttribute('color', new THREE.BufferAttribute(floorColors, 3))
   const drainFloor = addMesh(
-    new THREE.CircleGeometry(0.096, 64),
-    new THREE.MeshBasicMaterial({ color: '#293c3e' }),
+    drainFloorGeometry,
+    new THREE.MeshStandardMaterial({
+      color: ceramic.color,
+      roughness: ceramic.roughness,
+      vertexColors: true,
+    }),
     0,
     -0.203,
-    -0.19,
+    DRAIN_CENTER_Z,
   )
   drainFloor.rotation.x = -Math.PI / 2
-  drainFloor.scale.y = 1.1
+  drainFloor.scale.y = throat.scale.z
 
   addMesh(new RoundedBoxGeometry(1.32, 0.22, 0.55, 4, 0.06), ceramic, 0, 0.75, -1.1)
-  addMesh(new RoundedBoxGeometry(1.48, 1.67, 0.7, 6, 0.12), ceramic, 0, 0.685, -1.67)
-  addMesh(new RoundedBoxGeometry(1.53, 0.1, 0.74, 6, 0.047), seatMaterial, 0, 1.57, -1.685)
+  // 连体水箱与便池外沿同宽，不窄于座圈。
+  addMesh(new RoundedBoxGeometry(1.72, 1.67, 0.7, 6, 0.12), ceramic, 0, 0.685, -1.67)
+  addMesh(new RoundedBoxGeometry(1.77, 0.1, 0.74, 6, 0.047), seatMaterial, 0, 1.57, -1.685)
 
   for (const x of [-0.39, 0.39]) {
     addMesh(new RoundedBoxGeometry(0.18, 0.1, 0.2, 3, 0.025), chrome, x, 0.91, -0.85)
@@ -140,7 +171,7 @@ export function createToilet(): {
   lid.position.set(0, 1.065, -0.85)
   lid.rotation.x = OPEN_LID_ANGLE
   group.add(lid)
-  const lidShell = new THREE.Mesh(createOvalLid(0.835, 1.095), seatMaterial)
+  const lidShell = new THREE.Mesh(createOvalLid(0.835, 1.095, 0.026), seatMaterial)
   lidShell.position.z = 1.05
   lidShell.castShadow = true
   lidShell.receiveShadow = true

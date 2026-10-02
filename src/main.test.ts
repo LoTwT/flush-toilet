@@ -39,6 +39,7 @@ const { scene, audio, soundPreference } = vi.hoisted(() => ({
     unlock: vi.fn<AudioController['unlock']>().mockResolvedValue(undefined),
     setEnabled: vi.fn<AudioController['setEnabled']>(),
     setPaused: vi.fn<AudioController['setPaused']>(),
+    setLidClosed: vi.fn<AudioController['setLidClosed']>(),
     dispose: vi.fn<AudioController['dispose']>(),
   },
   soundPreference: { remembered: true as boolean | null },
@@ -444,23 +445,33 @@ describe('排泄物操作', () => {
     await import('./main')
     element('#lid-toggle').dispatchEvent(new Event('click'))
     expect(element('#excrement-add').disabled).toBe(true)
+    // 便池声音随盖子同步变闷，场景与声音收到同一状态。
+    expect(audio.setLidClosed).toHaveBeenLastCalledWith(true)
     element('#excrement-add').dispatchEvent(new Event('click'))
     expect(scene.addExcrement).not.toHaveBeenCalled()
     element('#lid-toggle').dispatchEvent(new Event('click'))
+    expect(audio.setLidClosed).toHaveBeenLastCalledWith(false)
     expect(element('#excrement-add').disabled).toBe(false)
     element('#sound-dialog').open = true
     element('#excrement-add').dispatchEvent(new Event('click'))
     expect(scene.addExcrement).not.toHaveBeenCalled()
   })
 
-  it('冲刷时不能放入，Boost 在补水阶段允许按当前水位再次放入', async () => {
+  it('冲刷时不能放入，Boost 补水早期等水位回升，再按当前水位放入', async () => {
     await import('./main')
     renderAt(1000)
     element('#boost-toggle').dispatchEvent(new Event('click'))
     element('#flush-button').dispatchEvent(new Event('click'))
     element('#excrement-add').dispatchEvent(new Event('click'))
     expect(scene.addExcrement).not.toHaveBeenCalled()
+    // 已可再次冲水，但水面还退在排水口附近。
     renderAt(6000)
+    expect(element('#flush-button').disabled).toBe(false)
+    expect(element('#excrement-add').disabled).toBe(true)
+    expect(element('#excrement-note').textContent).toBe('便池水位回升后可放入')
+    element('#excrement-add').dispatchEvent(new Event('click'))
+    expect(scene.addExcrement).not.toHaveBeenCalled()
+    renderAt(10000)
     expect(element('#excrement-add').disabled).toBe(false)
     element('#excrement-add').dispatchEvent(new Event('click'))
     expect(scene.addExcrement).toHaveBeenCalledOnce()
@@ -545,7 +556,8 @@ describe('排泄物操作', () => {
     element('#boost-toggle').dispatchEvent(new Event('click'))
     element('#flush-button').dispatchEvent(new Event('click'))
     scene.hasExcrement.mockReturnValue(false)
-    renderAt(6200)
+    // 补水后段水位已回升，Boost 允许放入新的一份。
+    renderAt(10000)
     element('#excrement-add').dispatchEvent(new Event('click'))
     expect(element('#placement-options').hidden).toBe(false)
     element('#boost-toggle').dispatchEvent(new Event('click'))
