@@ -32,17 +32,20 @@ export function sampleFlush(
   const phase = getPhase(time)
   const { pressure, volume } = FLUSH_STRENGTHS[strength]
   const drainedVolume = Math.min(volume, initialWater.tankLevel)
-  const tankDrain = smoothRange(0.12, 3, time)
+  // 虹吸与冲水录音对齐：座圈水流沿侧壁持续冲下时，便池水位快速退入排水口，
+  // 紧接着约 2.8 秒的低沉咕噜声是断流；侧流在水退到底之后才减弱，
+  // 便池随即由补水管回升，先于水箱蓄满。
+  const tankDrain = smoothRange(0.12, 2.9, time)
   const refill =
     drainedVolume * smoothRange(1.1, 11.2, time) +
     (1 - initialWater.tankLevel) * smoothRange(0, 11.2, time)
-  const bowlRise = 0.065 * smoothRange(0.12, 1.5, time)
+  const bowlRise = 0.065 * smoothRange(0.12, 1.3, time)
   const bowlDrain =
-    (initialWater.bowlHeight + 0.065 - LOW_WATER_HEIGHT) * smoothRange(2.2, 4.8, time)
-  const bowlRefill = (REST_WATER_HEIGHT - LOW_WATER_HEIGHT) * smoothRange(4.9, 10.5, time)
-  const surge = smoothRange(0.1, 0.7, time) * (1 - smoothRange(2.6, 4.5, time))
-  const refillFlow = 0.16 * smoothRange(3, 4.8, time) * (1 - smoothRange(9.8, 11.1, time))
-  const swirl = smoothRange(0.25, 2, time) * (1 - smoothRange(3.5, 8, time))
+    (initialWater.bowlHeight + 0.065 - LOW_WATER_HEIGHT) * smoothRange(1.3, 2.7, time)
+  const bowlRefill = (REST_WATER_HEIGHT - LOW_WATER_HEIGHT) * smoothRange(3.1, 7.8, time)
+  const surge = smoothRange(0.1, 0.7, time) * (1 - smoothRange(2.7, 3.8, time))
+  const refillFlow = 0.16 * smoothRange(2.9, 4.4, time) * (1 - smoothRange(9.8, 11.1, time))
+  const swirl = smoothRange(0.25, 1.8, time) * (1 - smoothRange(3, 7.5, time))
 
   return {
     phase,
@@ -59,7 +62,7 @@ export function sampleFlush(
       (0.008 * surge + 0.018 * swirl + 0.003 * refillFlow) *
       pressure *
       (1 - smoothRange(10, 12, time)),
-    suction: smoothRange(2.4, 3.4, time) * (1 - smoothRange(4.3, 5.1, time)) * Math.sqrt(pressure),
+    suction: smoothRange(1.2, 2, time) * (1 - smoothRange(2.6, 3.2, time)) * Math.sqrt(pressure),
     buttonPress: smoothRange(0, 0.12, time) * (1 - smoothRange(0.2, 0.5, time)),
   }
 }

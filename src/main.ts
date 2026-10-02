@@ -2,6 +2,7 @@ import './style.css'
 import { createFlushAudio } from './audio'
 import {
   CLEANER_COLORS,
+  EXCREMENT_MIN_WATER_HEIGHT,
   EXCREMENT_QUANTITY_PRESETS,
   FLUSH_STRENGTHS,
   MAX_EXCREMENT_PIECES,
@@ -98,6 +99,10 @@ function endPlacementDrag(): void {
   canvas.style.cursor = 'default'
 }
 
+function waterCanHoldExcrement(state: FlushState): boolean {
+  return state.bowlHeight >= EXCREMENT_MIN_WATER_HEIGHT
+}
+
 function canArrange(): boolean {
   return (
     !!scene &&
@@ -185,14 +190,16 @@ function updateInterface(state: FlushState): void {
   const canStart = cycle.canStart
   const hasExcrement = scene?.hasExcrement() ?? false
   const count = scene?.excrementPlacement.count() ?? 0
-  const interfaceState = `${state.phase}:${cycle.boostEnabled}:${canStart}:${lidClosed}:${hasExcrement}:${placementEditing}:${count}`
+  const waterReady = waterCanHoldExcrement(state)
+  const interfaceState = `${state.phase}:${cycle.boostEnabled}:${canStart}:${lidClosed}:${hasExcrement}:${placementEditing}:${count}:${waterReady}`
   if (interfaceState !== lastInterfaceState) {
     lastInterfaceState = interfaceState
     const ready = state.phase === 'ready'
     app.classList.toggle('has-excrement', hasExcrement)
     flushButton.disabled = !canStart
     strengthOptions.disabled = !canStart
-    excrementButton.disabled = !canStart || lidClosed
+    excrementButton.disabled =
+      !canStart || lidClosed || (!hasExcrement && !placementEditing && !waterReady)
     excrementLabel.textContent = placementEditing
       ? '完成摆放'
       : hasExcrement
@@ -211,7 +218,9 @@ function updateInterface(state: FlushState): void {
         : lidClosed
           ? '先掀开马桶盖，再放入'
           : canStart
-            ? '放入一份，看看水流如何带走它'
+            ? waterReady
+              ? '放入一份，看看水流如何带走它'
+              : '便池水位回升后可放入'
             : '等待本轮冲水完成后可放入'
     boostButton.setAttribute('aria-pressed', String(cycle.boostEnabled))
     flushLabel.textContent = canStart
@@ -333,7 +342,7 @@ excrementButton.addEventListener(
     if (!scene || failed || soundDialog.open || !cycle.canStart || lidClosed) return
     if (placementEditing) setPlacementEditing(false)
     else if (scene.hasExcrement()) setPlacementEditing(true)
-    else {
+    else if (waterCanHoldExcrement(cycle.state)) {
       scene.addExcrement(cycle.state)
       setPlacementEditing(true)
     }
@@ -357,6 +366,7 @@ lidButton.addEventListener(
     lidClosed = !lidClosed
     if (lidClosed) setPlacementEditing(false)
     scene.setLidClosed(lidClosed)
+    audio.setLidClosed(lidClosed)
     lidButton.setAttribute('aria-pressed', String(lidClosed))
     lidButton.textContent = lidClosed ? '掀开马桶盖' : '盖上马桶盖'
     updateInterface(cycle.state)

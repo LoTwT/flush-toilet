@@ -132,19 +132,48 @@ export function createSeatGeometry(): THREE.BufferGeometry {
   return geometry
 }
 
-export function createOvalLid(radiusX: number, radiusZ: number): THREE.BufferGeometry {
-  const outline = new THREE.Shape()
-  outline.absellipse(0, 0, radiusX, radiusZ, 0, Math.PI * 2, false, 0)
-  const geometry = new THREE.ExtrudeGeometry(outline, {
-    depth: 0.04,
-    bevelEnabled: true,
-    bevelThickness: 0.014,
-    bevelSize: 0.018,
-    bevelSegments: 4,
-    steps: 1,
-    curveSegments: 64,
-  })
-  geometry.rotateX(Math.PI / 2)
-  geometry.translate(0, 0.02, 0)
+export function createOvalLid(radiusX: number, radiusZ: number, dome = 0): THREE.BufferGeometry {
+  // 参数化的椭圆盖板：上表面可微微隆起，外缘圆角，底面保持平整以贴合缓冲垫与内侧凹面。
+  // 外径、厚度与原先带倒角的挤出盖板一致。
+  const segments = 128
+  const surfaceRings = 14
+  const edgeRings = 10
+  const outerX = radiusX + 0.018
+  const outerZ = radiusZ + 0.018
+  const halfThickness = 0.034
+  const edge = 0.03
+  const profile: { scale: number; offset: number; y: number }[] = []
+  for (let ring = 0; ring <= surfaceRings; ring++) {
+    const v = ring / surfaceRings
+    profile.push({ scale: v, offset: 0, y: halfThickness + dome * (1 - v * v) })
+  }
+  for (let ring = 1; ring < edgeRings; ring++) {
+    const angle = Math.PI / 2 - (ring / edgeRings) * Math.PI
+    profile.push({ scale: 1, offset: edge * Math.cos(angle), y: halfThickness * Math.sin(angle) })
+  }
+  for (let ring = surfaceRings; ring >= 0; ring--) {
+    profile.push({ scale: ring / surfaceRings, offset: 0, y: -halfThickness })
+  }
+  const positions: number[] = []
+  const indices: number[] = []
+  for (let segment = 0; segment <= segments; segment++) {
+    const angle = (segment / segments) * Math.PI * 2
+    for (const [row, point] of profile.entries()) {
+      positions.push(
+        Math.sin(angle) * ((outerX - edge) * point.scale + point.offset),
+        point.y,
+        Math.cos(angle) * ((outerZ - edge) * point.scale + point.offset),
+      )
+      if (segment < segments && row < profile.length - 1) {
+        const current = segment * profile.length + row
+        const next = current + profile.length
+        indices.push(current, current + 1, next, current + 1, next + 1, next)
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
   return geometry
 }

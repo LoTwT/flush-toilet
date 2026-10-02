@@ -72,5 +72,6 @@ export interface FlushAudio {
   update: (state: FlushState) => void
   setEnabled: (enabled: boolean) => void
   setPaused: (paused: boolean) => void
+  setLidClosed: (closed: boolean) => void
   dispose: () => void
 }

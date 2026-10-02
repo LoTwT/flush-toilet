@@ -12,6 +12,21 @@ import {
 } from './excrement-model'
 import { createExcrementMosaicBaker } from './excrement-mosaic'
 
+// 排泄物密度接近水，漂浮时大部分没入水中，只有上沿露出水面。
+const FLOAT_SUBMERSION = 0.4
+const FALL_TIME = 0.26
+const FALL_HEIGHT = 0.28
+const DRAIN_Z = -0.19
+// 喉口底部的遮挡圆盘之下，物件完全离开视野。
+const DRAIN_DEPTH = -0.55
+
+/** 放入后的竖直偏移：自由落体入水，随后短暂下沉再回浮，振荡迅速衰减。 */
+function entryOffset(time: number): number {
+  if (time < FALL_TIME) return FALL_HEIGHT * (1 - (time / FALL_TIME) ** 2)
+  const after = time - FALL_TIME
+  return -0.03 * Math.sin(after * 9) * Math.exp(-after * 4.5)
+}
+
 export function createExcrement() {
   const group = new THREE.Group()
   group.visible = false
@@ -75,9 +90,11 @@ export function createExcrement() {
       mosaic,
       mosaicTarget,
       mosaicDirty: true,
+      splashed: false,
       footprint: geometry.boundingSphere!.radius + geometry.boundingSphere!.center.length() + 0.012,
       halfWidth: Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x)),
       halfLength: Math.max(Math.abs(bounds.min.z), Math.abs(bounds.max.z)),
+      halfHeight: bounds.max.y,
     }
   }
   const pieces = [
@@ -124,6 +141,8 @@ export function createExcrement() {
   let currentState: FlushState | undefined
   let mosaicBaker: ReturnType<typeof createExcrementMosaicBaker> | undefined
   let backgroundDirty = false
+  // 入水位置交给水面模拟激起波纹，读取后清空。
+  let splashes: { x: number; z: number; size: number }[] = []
   const pickRaycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0))
 
   function availableSpace(piece: (typeof pieces)[number], state: FlushState) {
@@ -156,27 +175,46 @@ export function createExcrement() {
     }
     const elapsed = flushing ? state.elapsed : 0
     const pressure = FLUSH_STRENGTHS[state.strength].pressure
-    const orbit = -elapsed * (0.6 + pressure * 0.65) * smoothRange(0, 1.1, elapsed)
-    const pull = smoothRange(1.7, 4.5, elapsed)
-    const sink = smoothRange(3.2, 4.9, elapsed)
-    const shrink = 1 - 0.82 * smoothRange(3.4, 4.8, elapsed)
+    const swirlTime = elapsed * smoothRange(0.2, 1.2, elapsed)
     for (const piece of pieces) {
-      const drop = 0.28 * (1 - smoothRange(0, 0.45, age - piece.addedAt)) * (1 - sink)
-      const space = availableSpace(piece, state)
+      const radius = Math.min(1, Math.hypot(piece.x, piece.z))
+      // 外侧和较弱档的物件稍晚被吸走，在虹吸断流前依次进入排水口，不会同时挤到一点。
+      const lag =
+        0.35 * radius + ((piece.variant * 0.37) % 1) * 0.25 + (1 - Math.min(pressure, 1)) * 0.4
+      const pullEnd = 2.05 + lag * 0.5
+      const pull = smoothRange(0.9 + lag, pullEnd, elapsed)
+      const sink = smoothRange(pullEnd - 0.55, pullEnd + 0.45, elapsed)
+      const tilt = smoothRange(pullEnd - 0.5, pullEnd + 0.1, elapsed)
+      // 近似自由涡：越靠内转得越快，向内汇聚时再加速，形成螺旋轨迹。
+      const orbit = -swirlTime * (0.55 + pressure * 0.6) * (1.3 - 0.6 * radius) - pull * pull * 1.6
       const x = piece.x * Math.cos(orbit) + piece.z * Math.sin(orbit)
       const z = piece.z * Math.cos(orbit) - piece.x * Math.sin(orbit)
-      const bob = Math.sin(age * 2.3 + piece.variant * 1.8) * 0.006 * (1 - sink)
+      const space = availableSpace(piece, state)
+      const throatAngle = orbit * 1.7 + piece.variant * 2.1
+      const entry = age - piece.addedAt
+      if (!piece.splashed && entry >= FALL_TIME && !flushing) {
+        piece.splashed = true
+        splashes.push({ x: piece.object.position.x, z: piece.object.position.z, size: piece.size })
+      }
+      const float = state.bowlHeight - FLOAT_SUBMERSION * piece.halfHeight * piece.size
+      const bob = Math.sin(age * 2.3 + piece.variant * 1.8) * 0.004
+      const surfaceY = float + (bob + entryOffset(entry)) * (1 - sink)
       piece.object.position.set(
-        x * space.x * (1 - pull),
-        state.bowlHeight + 0.012 + bob + drop - sink * (state.bowlHeight + 0.25),
-        space.centerZ * (1 - pull) - 0.19 * pull + z * space.z * (1 - pull),
+        x * space.x * (1 - pull) + Math.cos(throatAngle) * 0.04 * pull,
+        surfaceY + (DRAIN_DEPTH - surfaceY) * sink,
+        space.centerZ * (1 - pull) +
+          DRAIN_Z * pull +
+          z * space.z * (1 - pull) +
+          Math.sin(throatAngle) * 0.04 * pull,
       )
+      // 先绕竖直轴随水流转向，再沿自身横轴前端朝下，顺着喉口没入。
       piece.object.rotation.set(
-        Math.sin(age * 1.7 + piece.variant) * 0.07,
+        Math.sin(age * 1.7 + piece.variant) * 0.06 * (1 - tilt) + tilt * 1.35,
         piece.rotation + orbit,
         0,
+        'YXZ',
       )
-      piece.object.scale.setScalar(piece.size * shrink)
+      piece.object.scale.setScalar(piece.size * (1 - 0.15 * sink))
     }
     marker.visible = editing && !flushing
     const piece = pieces[selected]
@@ -268,7 +306,10 @@ export function createExcrement() {
     if (group.visible) return
     age = 0
     if (!pieces.length) pieces.push(createPiece(nextLayout()))
-    for (const piece of pieces) piece.addedAt = 0
+    for (const piece of pieces) {
+      piece.addedAt = 0
+      piece.splashed = false
+    }
     flushing = false
     group.visible = true
     update(state, 0)
@@ -343,6 +384,7 @@ export function createExcrement() {
       geometry.boundingSphere!.radius + geometry.boundingSphere!.center.length() + 0.012
     piece.halfWidth = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x))
     piece.halfLength = Math.max(Math.abs(bounds.min.z), Math.abs(bounds.max.z))
+    piece.halfHeight = bounds.max.y
     piece.mosaicDirty = true
     move(x, z)
   }
@@ -435,6 +477,11 @@ export function createExcrement() {
     setMosaic,
     prepareMosaic,
     update,
+    takeSplashes: () => {
+      const taken = splashes
+      splashes = []
+      return taken
+    },
     placement: {
       count: () => pieces.length,
       setCount,
@@ -456,6 +503,7 @@ export function createExcrement() {
       marker.geometry.dispose()
       marker.material.dispose()
       material.bumpMap?.dispose()
+      material.roughnessMap?.dispose()
       material.dispose()
       mosaicBaker?.dispose()
     },

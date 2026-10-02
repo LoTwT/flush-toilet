@@ -3,8 +3,11 @@ import type { BowlSection, CleanerColor, FlushPhase, FlushStrength } from './typ
 export const CYCLE_DURATION = 12
 export const FLUSH_END_TIME = 5
 export const REST_WATER_HEIGHT = 0.32
-export const LOW_WATER_HEIGHT = 0.095
+// 虹吸断流时便池水面退到排水口上沿以下，空气灌入排水道；存水弯内仍保留水封。
+export const LOW_WATER_HEIGHT = -0.125
 export const MAX_EXCREMENT_PIECES = 12
+// Boost 补水早期水面还退在排水口附近，放不下物件；回升到此水位后才允许放入。
+export const EXCREMENT_MIN_WATER_HEIGHT = 0.18
 
 export const EXCREMENT_QUANTITY_PRESETS = {
   small: { label: '少', count: 1 },

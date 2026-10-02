@@ -14,6 +14,14 @@ import * as mosaicBaker from './excrement-mosaic'
 
 afterEach(() => vi.restoreAllMocks())
 
+// 漂浮时大部分没入水中：中心在水面下，上沿露出水面。
+function expectFloatingAt(piece: THREE.Object3D, waterHeight: number): void {
+  const top = (piece.children[0] as THREE.Mesh).geometry.boundingBox!.max.y * piece.scale.y
+  expect(piece.position.y).toBeLessThan(waterHeight)
+  expect(piece.position.y).toBeGreaterThan(waterHeight - top)
+  expect(piece.position.y + top).toBeGreaterThan(waterHeight)
+}
+
 it.each(['gentle', 'standard', 'strong'] as const)('%s 档将排泄物带向排水口并清空', (strength) => {
   const excrement = createExcrement()
   excrement.add(sampleFlush(CYCLE_DURATION))
@@ -25,7 +33,10 @@ it.each(['gentle', 'standard', 'strong'] as const)('%s 档将排泄物带向排�
   for (const [index, piece] of excrement.group.children.entries()) {
     expect(piece.position.distanceTo(initial[index])).toBeGreaterThan(0.05)
   }
-  excrement.update(sampleFlush(4.9, strength), 2.3)
+  // 与冲水录音约 2.8 秒的断流声对齐：虹吸结束前已全部沉入喉口之下。
+  excrement.update(sampleFlush(3.2, strength), 0.6)
+  for (const piece of excrement.group.children) expect(piece.position.y).toBeLessThan(-0.25)
+  excrement.update(sampleFlush(4.9, strength), 1.7)
   for (const piece of excrement.group.children) {
     expect(Math.abs(piece.position.x)).toBeLessThan(0.12)
     expect(Math.abs(piece.position.z + 0.19)).toBeLessThan(0.12)
@@ -45,7 +56,7 @@ it('Boost 补水期间放入的一份保留到下一次冲水，并贴合当前�
   expect(excrement.group.visible).toBe(true)
   for (const piece of excrement.group.children) {
     expect(piece.position.y).toBeLessThan(REST_WATER_HEIGHT)
-    expect(Math.abs(piece.position.y - refilling.bowlHeight)).toBeLessThan(0.03)
+    expectFloatingAt(piece, refilling.bowlHeight)
   }
   excrement.update(sampleFlush(CYCLE_DURATION), 7)
   expect(excrement.group.visible).toBe(true)
@@ -55,6 +66,25 @@ it('Boost 补水期间放入的一份保留到下一次冲水，并贴合当前�
   excrement.add(sampleFlush(5.2))
   excrement.update(sampleFlush(5.3), 0.1)
   expect(excrement.group.visible).toBe(true)
+})
+
+it('每段入水时只激起一次波纹，落点与物件位置一致', () => {
+  const excrement = createExcrement()
+  const rest = sampleFlush(CYCLE_DURATION)
+  excrement.add(rest)
+  expect(excrement.takeSplashes()).toEqual([])
+  excrement.update(rest, 0.1)
+  expect(excrement.takeSplashes()).toEqual([])
+  excrement.update(rest, 0.3)
+  const splashes = excrement.takeSplashes()
+  expect(splashes).toHaveLength(3)
+  for (const [index, splash] of splashes.entries()) {
+    const position = excrement.group.children[index].position
+    expect(splash.x).toBeCloseTo(position.x)
+    expect(splash.z).toBeCloseTo(position.z)
+  }
+  excrement.update(rest, 1)
+  expect(excrement.takeSplashes()).toEqual([])
 })
 
 it('新增段落单独落水，不重播已浮稳的旧段', () => {
@@ -82,9 +112,8 @@ it('冲走后再次放入，所有段落重新落水并一起浮稳', () => {
   expect(excrement.group.visible).toBe(false)
   excrement.add(rest)
   excrement.update(rest, 0.6)
-  // 重新放入的一份整体重播落水，0.6 秒后全部贴近当前水位。
-  for (const piece of excrement.group.children)
-    expect(Math.abs(piece.position.y - (rest.bowlHeight + 0.012))).toBeLessThan(0.02)
+  // 重新放入的一份整体重播落水，0.6 秒后全部回浮到当前水位。
+  for (const piece of excrement.group.children) expectFloatingAt(piece, rest.bowlHeight)
 })
 
 it.each([1 / 30, 1 / 144, 1.5, 12])('帧间隔 %s 秒时都能完成清空，不遗漏跨阶段的长帧', (delta) => {
@@ -413,8 +442,7 @@ it('批量数量遵守编辑与数值限制，清空后刷新背景并允许重�
   excrement.update(refilling, 1)
   expect(excrement.group.visible).toBe(true)
   expect(excrement.marker.visible).toBe(true)
-  for (const piece of excrement.group.children)
-    expect(Math.abs(piece.position.y - refilling.bowlHeight)).toBeLessThan(0.03)
+  for (const piece of excrement.group.children) expectFloatingAt(piece, refilling.bowlHeight)
   excrement.flush()
   excrement.placement.setCount(1)
   expect(excrement.placement.count()).toBe(6)

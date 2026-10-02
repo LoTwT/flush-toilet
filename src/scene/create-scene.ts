@@ -241,6 +241,8 @@ export async function createScene(
     const section = bowlAtHeight(state.bowlHeight)
     fluid.update(state, section, delta)
     const excrementMoved = excrement.update(state, delta)
+    for (const splash of excrement.takeSplashes())
+      fluid.splash(splash.x, splash.z, 0.6 * splash.size, section)
     excrement.prepareMosaic(renderer)
     const oldLidAngle = toilet.lid.rotation.x
     toilet.lid.rotation.x =
